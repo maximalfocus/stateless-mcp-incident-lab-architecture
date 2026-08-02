@@ -155,9 +155,9 @@ actual_rule_entries = {str(path.relative_to(rules)) for path in rules.rglob("*")
 if actual_rule_entries != rule_names:
     fail(f"boundary rule set differs: expected={sorted(rule_names)} actual={sorted(actual_rule_entries)}")
 matching = {
-    "from_glob": "gitignore-style-globstar-over-source-path",
+    "from_glob": "contract-prefix-globstar-subset-over-source-path",
     "import_pattern": "portable-ecmascript-python-regex-search-over-canonical-import",
-    "module_pattern": "gitignore-style-globstar-over-source-directory",
+    "module_pattern": "contract-prefix-globstar-subset-over-source-directory",
     "canonical_import": "bare packages remain unchanged; relative and aliased imports resolve to workspace-root TypeScript source paths",
 }
 framework_pattern = r"^(@modelcontextprotocol/sdk(?:/|$)|node:(?:http|https|http2|net|tls)$|(?:http|https)$|@aws-sdk/|aws-sdk(?:/|$)|undici(?:/|$)|express(?:/|$)|fastify(?:/|$))"
@@ -256,12 +256,13 @@ def contract_glob_matches(pattern: str, value: str) -> bool:
         prefix = pattern[:-3].rstrip("/") + "/"
         return value.startswith(prefix) and len(value) > len(prefix)
     if pattern.endswith("/*/"):
-        prefix = pattern[:-3]
+        prefix = pattern[:-2]
         if not value.startswith(prefix):
             return False
         tail = value[len(prefix):].strip("/")
         return bool(tail) and "/" not in tail
-    raise ValueError(f"unsupported contract glob: {pattern}")
+    fail(f"unsupported contract glob: {pattern}")
+    return False
 
 for pattern, (positives, negatives) in glob_cases.items():
     for value in positives:
@@ -272,7 +273,7 @@ for pattern, (positives, negatives) in glob_cases.items():
             fail(f"glob {pattern!r} catches near-miss path {value!r}")
 
 def public_entry_allowed(importer: str, target: str, rule: dict[str, str]) -> bool:
-    prefix = rule["module_pattern"][:-3]
+    prefix = rule["module_pattern"][:-2]
     if not target.startswith(prefix):
         return True
     module_name = target[len(prefix):].split("/", 1)[0]
@@ -282,16 +283,23 @@ def public_entry_allowed(importer: str, target: str, rule: dict[str, str]) -> bo
     return target == root + rule["allowed_entry"]
 
 for rule in expected_boundaries:
-    prefix = rule["module_pattern"][:-3]
-    root = prefix + "sample/"
-    same_importer = root + "service.ts"
+    # Derive the layer directory independently of the resolver's own slicing so a
+    # malformed module root cannot cancel itself out across fixture and resolver.
+    layer = rule["module_pattern"].replace("*/", "")
+    alpha, beta = layer + "alpha/", layer + "beta/"
     external_importer = "src/other/caller.ts"
-    if not public_entry_allowed(same_importer, root + "entity.ts", rule):
+    if not public_entry_allowed(alpha + "service.ts", alpha + "entity.ts", rule):
         fail(f"{rule['id']}: same-module internal import should be allowed")
-    if not public_entry_allowed(external_importer, root + "index.ts", rule):
+    if not public_entry_allowed(external_importer, alpha + "index.ts", rule):
         fail(f"{rule['id']}: cross-module public entry should be allowed")
-    if public_entry_allowed(external_importer, root + "entity.ts", rule):
+    if public_entry_allowed(external_importer, alpha + "entity.ts", rule):
         fail(f"{rule['id']}: cross-module internal import should be denied")
+    if public_entry_allowed(alpha + "service.ts", beta + "entity.ts", rule):
+        fail(f"{rule['id']}: sibling-module internal import should be denied")
+    if not public_entry_allowed(alpha + "service.ts", beta + "index.ts", rule):
+        fail(f"{rule['id']}: sibling-module public entry should be allowed")
+    if contract_glob_matches(rule["module_pattern"], layer.rstrip("/") + "ish"):
+        fail(f"{rule['id']}: prefix-colliding sibling directory must not match the module glob")
 
 # Validate links and leaked harness syntax across deliverable text files.
 link_re = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
@@ -312,7 +320,10 @@ for path in ROOT.rglob("*"):
             clean = target.split("#", 1)[0]
             if not clean or re.match(r"^[a-z][a-z0-9+.-]*:", clean, re.IGNORECASE):
                 continue
-            if not (path.parent / clean).resolve().exists():
+            resolved = (path.parent / clean).resolve()
+            if ROOT.parent not in [resolved, *resolved.parents]:
+                fail(f"link escapes project family: {path.relative_to(ROOT)} -> {target}")
+            elif not resolved.exists():
                 fail(f"broken link: {path.relative_to(ROOT)} -> {target}")
 
 try:

@@ -3,9 +3,9 @@ implementation: typescript-raw
 architecture: hexagonal
 source_root: src
 matching:
-  from_glob: gitignore-style-globstar-over-source-path
+  from_glob: contract-prefix-globstar-subset-over-source-path
   import_pattern: portable-ecmascript-python-regex-search-over-canonical-import
-  module_pattern: gitignore-style-globstar-over-source-directory
+  module_pattern: contract-prefix-globstar-subset-over-source-directory
   canonical_import: bare packages remain unchanged; relative and aliased imports resolve to workspace-root TypeScript source paths
 
 deny:

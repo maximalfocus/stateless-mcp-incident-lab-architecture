@@ -27,7 +27,7 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 
 ## Boundary matching contract
 
-- `from_glob` and `module_pattern` use gitignore-style globstar semantics over workspace-relative source paths/directories: `**` spans arbitrarily deep descendants; `*` stays within one segment.
+- `from_glob` and `module_pattern` use a closed prefix-globstar subset over workspace-relative paths: only `prefix/**` (all descendant files) and `prefix/*/` (one immediate child directory) are valid.
 - `import_pattern` uses the Python/ECMAScript-compatible regex subset and is searched against a canonical import.
 - Bare package specifiers remain unchanged. Relative and aliased imports resolve to workspace-root TypeScript source paths—including `.ts` source extensions—before matching.
 - Public-entry checks operate on resolved source modules: cross-module imports must resolve to `index.ts`; imports within the same module are allowed.
