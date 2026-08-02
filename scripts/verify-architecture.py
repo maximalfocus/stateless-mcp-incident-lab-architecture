@@ -276,7 +276,12 @@ def public_entry_allowed(importer: str, target: str, rule: dict[str, str]) -> bo
     prefix = rule["module_pattern"][:-2]
     if not target.startswith(prefix):
         return True
-    module_name = target[len(prefix):].split("/", 1)[0]
+    remainder = target[len(prefix):]
+    if "/" not in remainder:
+        # module_pattern governs immediate child directories; a layer-root file is
+        # not a module member and carries no public-entry obligation.
+        return True
+    module_name = remainder.split("/", 1)[0]
     root = f"{prefix}{module_name}/"
     if rule["same_module"] == "allow" and importer.startswith(root):
         return True
@@ -298,6 +303,8 @@ for rule in expected_boundaries:
         fail(f"{rule['id']}: sibling-module internal import should be denied")
     if not public_entry_allowed(alpha + "service.ts", beta + "index.ts", rule):
         fail(f"{rule['id']}: sibling-module public entry should be allowed")
+    if not public_entry_allowed(external_importer, layer + "shared.ts", rule):
+        fail(f"{rule['id']}: layer-root file outside any module must not be governed")
     if contract_glob_matches(rule["module_pattern"], layer.rstrip("/") + "ish"):
         fail(f"{rule['id']}: prefix-colliding sibling directory must not match the module glob")
 
