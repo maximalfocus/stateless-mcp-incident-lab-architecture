@@ -8,7 +8,7 @@ The learning goal requires comparing MCP wire mechanics with official SDK abstra
 
 ## Decision
 
-Use two independent TypeScript repositories, each containing a client and server behind hexagonal boundaries, proving one shared conformance contract and four-way interoperability matrix.
+Use two independent TypeScript repositories, each containing a client and server behind hexagonal boundaries, required to satisfy one shared conformance contract and a four-way interoperability matrix.
 
 ## Consequences
 
@@ -16,5 +16,5 @@ Domain logic is intentionally reimplemented, increasing work while making behavi
 
 ## Related
 
-- `../../stateless-mcp-incident-lab-prd/PRD.md` — Goals and Product topology
-- `../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md` — Approach
+- [PRD — Goals and Product topology](../../stateless-mcp-incident-lab-prd/PRD.md)
+- [PLAN-001 — Approach](../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md)

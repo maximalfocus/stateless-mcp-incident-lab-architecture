@@ -16,5 +16,6 @@ The lab does not claim production security or full elicitation security conforma
 
 ## Related
 
-- `../../stateless-mcp-incident-lab-prd/PRD.md` — Security posture
-- `../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md` — Technology choices and Non-goals
+- [PRD — Security posture](../../stateless-mcp-incident-lab-prd/PRD.md)
+- [PLAN-001 — Technology choices and Non-goals](../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md)
+- [ADR-0003 — ECS Fargate and ALB](0003-fargate-alb-streamable-http.md)

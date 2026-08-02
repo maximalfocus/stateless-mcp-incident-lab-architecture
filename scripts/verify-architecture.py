@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -15,73 +16,135 @@ def fail(message: str) -> None:
     errors.append(message)
 
 
+def read(path: Path) -> str:
+    if not path.is_file():
+        fail(f"missing file: {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}")
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def section_bodies(body: str, heading: str) -> list[str]:
+    pattern = re.compile(rf"^## {re.escape(heading)}\s*$", re.MULTILINE)
+    matches = list(pattern.finditer(body))
+    result: list[str] = []
+    for match in matches:
+        tail = body[match.end() :]
+        next_heading = re.search(r"^## ", tail, re.MULTILINE)
+        result.append(tail[: next_heading.start() if next_heading else len(tail)].strip())
+    return result
+
+
 expected = {
     "0001-independent-raw-sdk-realizations.md",
     "0002-dynamodb-explicit-application-state.md",
     "0003-fargate-alb-streamable-http.md",
     "0004-ephemeral-unauthenticated-core-lab.md",
 }
-actual = {p.name for p in (ROOT / "adr").glob("*.md")}
+adr_dir = ROOT / "adr"
+actual = {p.name for p in adr_dir.glob("*.md")} if adr_dir.is_dir() else set()
 if actual != expected:
     fail(f"ADR set differs: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
 
 required_sections = ["Context", "Decision", "Consequences", "Related"]
-for path in sorted((ROOT / "adr").glob("*.md")):
-    body = path.read_text(encoding="utf-8")
-    if not re.search(r"^Status: Proposed$", body, re.MULTILINE):
-        fail(f"{path.name}: status is not Proposed")
+for path in sorted(adr_dir.glob("*.md")):
+    body = read(path)
+    statuses = re.findall(r"^Status:\s*(\S.*)$", body, re.MULTILINE)
+    if statuses != ["Proposed"]:
+        fail(f"{path.name}: expected exactly one Proposed status, found {statuses}")
     for heading in required_sections:
-        if not re.search(rf"^## {heading}$", body, re.MULTILINE):
-            fail(f"{path.name}: missing ## {heading}")
-    for target in re.findall(r"`(\.\./\.\./stateless-mcp-incident-lab-prd/[^`]+\.md)`", body):
-        if not (path.parent / target).resolve().is_file():
-            fail(f"{path.name}: broken sibling source link {target}")
+        bodies = section_bodies(body, heading)
+        if len(bodies) != 1 or not bodies[0]:
+            fail(f"{path.name}: expected one non-empty ## {heading} section")
+    related = section_bodies(body, "Related")
+    if related:
+        links = re.findall(r"\[[^]]+\]\(([^)]+)\)", related[0])
+        if not any(target.endswith("stateless-mcp-incident-lab-prd/PRD.md") for target in links):
+            fail(f"{path.name}: Related lacks sibling PRD link")
+        if not any(target.endswith("stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md") for target in links):
+            fail(f"{path.name}: Related lacks sibling PLAN link")
 
-readme = (ROOT / "README.md").read_text(encoding="utf-8")
+readme = read(ROOT / "README.md")
+row_re = re.compile(r"^\| \[ADR-([0-9]{4})\]\(adr/([^)]+)\) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", re.MULTILINE)
+rows = row_re.findall(readme)
+if len(rows) != 4:
+    fail(f"README must contain exactly four parseable ADR rows, found {len(rows)}")
+row_map = {number: (filename, status.strip(), decision.strip(), pinned.strip()) for number, filename, status, decision, pinned in rows}
+if len(row_map) != len(rows):
+    fail("README contains duplicate ADR rows")
 for name in sorted(expected):
     number = name[:4]
-    if readme.count(f"(adr/{name})") != 1:
-        fail(f"README must link ADR {number} exactly once")
-    row = next((line for line in readme.splitlines() if f"ADR-{number}" in line), "")
-    if "| Proposed |" not in row:
-        fail(f"README status mismatch for ADR-{number}")
+    row = row_map.get(number)
+    if row is None:
+        fail(f"README missing ADR-{number}")
+        continue
+    filename, status, _decision, pinned = row
+    if filename != name or status != "Proposed":
+        fail(f"README mismatch for ADR-{number}: file={filename!r} status={status!r}")
+    if not pinned.startswith("Future "):
+        fail(f"README ADR-{number} Pinned by must name a future round while Proposed")
+if "Accepted ADRs are append-only" not in readme:
+    fail("README does not declare the Accepted-ADR append-only lifecycle")
 
-for directory in [ROOT / "diagrams", ROOT / "rules"]:
-    files = {p.name for p in directory.iterdir() if p.is_file()}
-    if files != {".gitkeep"}:
-        fail(f"{directory.name}/ should contain only .gitkeep, found {sorted(files)}")
+for directory_name in ["diagrams", "rules"]:
+    directory = ROOT / directory_name
+    if not directory.is_dir():
+        fail(f"missing directory: {directory_name}/")
+        continue
+    entries = {str(path.relative_to(directory)) for path in directory.rglob("*") if path.is_file()}
+    if entries != {".gitkeep"}:
+        fail(f"{directory_name}/ should contain only .gitkeep, found {sorted(entries)}")
 
+# Validate links and leaked harness syntax across deliverable text formats.
+link_re = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
+text_suffixes = {".md", ".json", ".yaml", ".yml", ".mmd", ".txt"}
 for path in ROOT.rglob("*"):
-    if not path.is_file() or ".git" in path.parts or path.suffix.lower() not in {".md", ".json", ".yaml", ".yml"}:
+    if not path.is_file() or ".git" in path.parts or path.suffix.lower() not in text_suffixes:
         continue
-    try:
-        body = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        continue
-    if re.search(r"^\s*</(content|invoke|parameter)>\s*$", body, re.MULTILINE):
-        fail(f"wrapper tag leaked in {path.relative_to(ROOT)}")
+    body = read(path)
     if re.search(r"\[\[[^]]+\]\]", body):
         fail(f"wikilink found in {path.relative_to(ROOT)}")
+    if re.search(r"^\s*</(content|invoke|parameter)>\s*$", body, re.MULTILINE):
+        fail(f"wrapper tag leaked in {path.relative_to(ROOT)}")
+    for target in link_re.findall(body):
+        clean = target.split("#", 1)[0]
+        if not clean or re.match(r"^[a-z][a-z0-9+.-]*:", clean, re.IGNORECASE):
+            continue
+        if not (path.parent / clean).resolve().exists():
+            fail(f"broken link: {path.relative_to(ROOT)} -> {target}")
+
+try:
+    scaffold_date = subprocess.check_output(
+        ["git", "log", "--reverse", "--format=%ad", "--date=short"],
+        cwd=ROOT,
+        text=True,
+    ).splitlines()[0]
+except (subprocess.CalledProcessError, IndexError) as exc:
+    fail(f"cannot derive scaffold date from git history: {exc}")
+    scaffold_date = ""
 
 plan = PRD / "PLAN-001-stateless-core.md"
-if not plan.is_file():
-    fail("sibling PRD PLAN-001 is missing")
-else:
-    plan_body = plan.read_text(encoding="utf-8")
-    architecture_rows = [line for line in plan_body.splitlines() if line.startswith("| Architecture |")]
-    if len(architecture_rows) != 1:
-        fail(f"expected one Architecture repo-family row, found {len(architecture_rows)}")
-    elif "Scaffolded 2026-08-01 with 4 `Status: Proposed` ADR stubs" not in architecture_rows[0]:
-        fail("sibling PLAN architecture row does not describe current scaffold")
+plan_body = read(plan)
+architecture_rows = [line for line in plan_body.splitlines() if line.startswith("| Architecture |")]
+if len(architecture_rows) != 1:
+    fail(f"expected one Architecture repo-family row, found {len(architecture_rows)}")
+elif not all(
+    token in architecture_rows[0]
+    for token in [
+        "stateless-mcp-incident-lab-architecture",
+        f"Scaffolded {scaffold_date}",
+        "4 `Status: Proposed` ADR stubs",
+    ]
+):
+    fail("sibling PLAN architecture row does not match repo, scaffold date, count, and status")
 
+charter = read(ROOT / "PROBLEM.md")
 for heading in ["Problem", "Scope", "Non-goals", "Acceptance criteria", "Verification", "Residuals"]:
-    charter = (ROOT / "PROBLEM.md").read_text(encoding="utf-8")
-    if not re.search(rf"^## {re.escape(heading)}$", charter, re.MULTILINE):
-        fail(f"PROBLEM.md missing ## {heading}")
+    if len(re.findall(rf"^## {re.escape(heading)}$", charter, re.MULTILINE)) != 1:
+        fail(f"PROBLEM.md must contain exactly one ## {heading}")
 
 if errors:
     print("FAIL: architecture verification")
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
-print("PASS: architecture scaffold verification (4 Proposed ADRs, sibling PLAN reconciled)")
+print(f"PASS: architecture scaffold verification (4 Proposed ADRs, scaffolded {scaffold_date}, sibling PLAN reconciled)")

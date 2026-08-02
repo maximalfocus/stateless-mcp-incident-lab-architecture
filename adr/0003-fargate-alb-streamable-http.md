@@ -16,5 +16,6 @@ The topology preserves ordinary HTTP streaming behavior and replica visibility b
 
 ## Related
 
-- `../../stateless-mcp-incident-lab-prd/PRD.md` — Deployment
-- `../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md` — Approach alternative 4
+- [PRD — Deployment](../../stateless-mcp-incident-lab-prd/PRD.md)
+- [PLAN-001 — Approach alternative 4](../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md)
+- [ADR-0004 — Ephemeral unauthenticated core lab](0004-ephemeral-unauthenticated-core-lab.md)

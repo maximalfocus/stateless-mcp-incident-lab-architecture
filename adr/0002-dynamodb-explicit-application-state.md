@@ -12,9 +12,9 @@ Use DynamoDB Local and managed DynamoDB behind a persistence port, with opaque r
 
 ## Consequences
 
-Local and AWS persistence semantics align, but data modeling follows DynamoDB constraints and requires deployed integration verification against the real service.
+Local and AWS persistence semantics are intended to align, but data modeling follows DynamoDB constraints and the alignment requires deployed integration verification against the real service.
 
 ## Related
 
-- `../../stateless-mcp-incident-lab-prd/PRD.md` — Domain and data model
-- `../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md` — Technology choices
+- [PRD — Domain and data model](../../stateless-mcp-incident-lab-prd/PRD.md)
+- [PLAN-001 — Technology choices](../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md)
