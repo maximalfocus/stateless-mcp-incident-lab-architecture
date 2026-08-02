@@ -36,12 +36,33 @@ def section_bodies(body: str, heading: str) -> list[str]:
     return result
 
 
-expected = {
-    "0001-independent-raw-sdk-realizations.md",
-    "0002-dynamodb-explicit-application-state.md",
-    "0003-fargate-alb-streamable-http.md",
-    "0004-ephemeral-unauthenticated-core-lab.md",
+adr_contracts = {
+    "0001-independent-raw-sdk-realizations.md": {
+        "title": "# ADR-0001: Independent raw and SDK realizations",
+        "decision": "Independent raw and SDK realizations behind one contract",
+        "pinned": "`ARCH-001`–`ARCH-004`",
+        "conformance": "ARCH-001 through ARCH-004",
+    },
+    "0002-dynamodb-explicit-application-state.md": {
+        "title": "# ADR-0002: DynamoDB for explicit application state",
+        "decision": "DynamoDB for explicit application state across replicas",
+        "pinned": "`ARCH-005`",
+        "conformance": "ARCH-005",
+    },
+    "0003-fargate-alb-streamable-http.md": {
+        "title": "# ADR-0003: ECS Fargate and ALB for Streamable HTTP",
+        "decision": "ECS Fargate and ALB for Streamable HTTP and SSE",
+        "pinned": "`ARCH-006`",
+        "conformance": "ARCH-006",
+    },
+    "0004-ephemeral-unauthenticated-core-lab.md": {
+        "title": "# ADR-0004: Ephemeral unauthenticated core lab",
+        "decision": "Ephemeral synthetic deployment with auth deferred",
+        "pinned": "`ARCH-006`",
+        "conformance": "ARCH-006",
+    },
 }
+expected = set(adr_contracts)
 adr_dir = ROOT / "adr"
 actual = {p.name for p in adr_dir.glob("*.md")} if adr_dir.is_dir() else set()
 if actual != expected:
@@ -50,18 +71,24 @@ if actual != expected:
 required_sections = ["Context", "Decision", "Consequences", "Related"]
 for path in sorted(adr_dir.glob("*.md")):
     body = read(path)
+    contract = adr_contracts.get(path.name)
+    headings = re.findall(r"^# .+$", body, re.MULTILINE)
+    if contract and headings[:1] != [contract["title"]]:
+        fail(f"{path.name}: H1 does not match its ADR number and indexed title")
     statuses = re.findall(r"^Status:\s*(\S.*)$", body, re.MULTILINE)
     if statuses != ["Accepted"]:
         fail(f"{path.name}: expected exactly one Accepted status, found {statuses}")
 
-    # Once an Accepted version exists in history, its bytes are immutable.
+    # Once an Accepted version exists anywhere in history, its bytes are immutable.
     try:
         commits = subprocess.check_output(
-            ["git", "log", "--reverse", "-SStatus: Accepted", "--format=%H", "--", str(path.relative_to(ROOT))],
+            ["git", "log", "--all", "--follow", "--reverse", "-SStatus: Accepted", "--format=%H", "--", str(path.relative_to(ROOT))],
             cwd=ROOT,
             text=True,
         ).splitlines()
-        if commits:
+        if not commits:
+            fail(f"{path.name}: Accepted ADR has no acceptance commit in git history")
+        else:
             accepted = subprocess.check_output(
                 ["git", "show", f"{commits[0]}:{path.relative_to(ROOT)}"],
                 cwd=ROOT,
@@ -82,6 +109,9 @@ for path in sorted(adr_dir.glob("*.md")):
             fail(f"{path.name}: Related lacks sibling PRD link")
         if not any(target.endswith("stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md") for target in links):
             fail(f"{path.name}: Related lacks sibling PLAN link")
+        conformance = [value.replace("`", "") for value in re.findall(r"^- Conformance: (.+)$", related[0], re.MULTILINE)]
+        if contract and conformance != [contract["conformance"]]:
+            fail(f"{path.name}: Related conformance citation differs from the ADR index")
 
 readme = read(ROOT / "README.md")
 row_re = re.compile(r"^\| \[ADR-([0-9]{4})\]\(adr/([^)]+)\) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", re.MULTILINE)
@@ -97,11 +127,10 @@ for name in sorted(expected):
     if row is None:
         fail(f"README missing ADR-{number}")
         continue
-    filename, status, _decision, pinned = row
-    if filename != name or status != "Accepted":
-        fail(f"README mismatch for ADR-{number}: file={filename!r} status={status!r}")
-    if not re.fullmatch(r"`ARCH-[0-9]{3}`(?: through |–)`ARCH-[0-9]{3}`|`ARCH-[0-9]{3}`", pinned):
-        fail(f"README ADR-{number} Pinned by must name one or more ARCH spec IDs")
+    filename, status, decision, pinned = row
+    contract = adr_contracts[name]
+    if filename != name or status != "Accepted" or decision != contract["decision"] or pinned != contract["pinned"]:
+        fail(f"README contract mismatch for ADR-{number}")
 if "Accepted ADRs are append-only" not in readme:
     fail("README does not declare the Accepted-ADR append-only lifecycle")
 
@@ -112,35 +141,43 @@ elif {str(path.relative_to(diagrams)) for path in diagrams.rglob("*")} != {".git
     fail("diagrams/ must remain empty until deployed acceptance authors a verified topology")
 
 rules = ROOT / "rules"
-expected_rules = {"typescript-raw-boundaries.yaml", "typescript-sdk-boundaries.yaml"}
-actual_rules = {path.name for path in rules.glob("*.yaml")} if rules.is_dir() else set()
-if actual_rules != expected_rules:
-    fail(f"boundary rule set differs: missing={sorted(expected_rules-actual_rules)} extra={sorted(actual_rules-expected_rules)}")
+rule_names = {"typescript-raw-boundaries.yaml", "typescript-sdk-boundaries.yaml"}
+actual_rule_entries = {str(path.relative_to(rules)) for path in rules.rglob("*")} if rules.is_dir() else set()
+if actual_rule_entries != rule_names:
+    fail(f"boundary rule set differs: expected={sorted(rule_names)} actual={sorted(actual_rule_entries)}")
+matching = {
+    "from_glob": "posix-glob-over-source-path",
+    "import_pattern": "ecmascript-regex-search-over-canonical-import",
+    "module_pattern": "posix-glob-over-source-directory",
+    "canonical_import": "bare packages remain unchanged; relative and aliased imports resolve to workspace-root source paths",
+}
+framework_pattern = r"^(@modelcontextprotocol/sdk(?:/|$)|node:(?:http|https)$|(?:http|https)$|@aws-sdk/|aws-sdk(?:/|$))"
 common_deny = [
-    {"id": "domain-to-application", "from_glob": "src/domain/**/*", "import_pattern": "src/application/**"},
-    {"id": "domain-to-adapters", "from_glob": "src/domain/**/*", "import_pattern": "src/adapters/**"},
-    {"id": "domain-to-frameworks", "from_glob": "src/domain/**/*", "import_pattern": "@modelcontextprotocol/sdk|node:http|@aws-sdk/.*"},
-    {"id": "application-to-adapters", "from_glob": "src/application/**/*", "import_pattern": "src/adapters/**"},
-    {"id": "inbound-to-outbound-adapters", "from_glob": "src/adapters/inbound/**/*", "import_pattern": "src/adapters/outbound/**"},
+    {"id": "domain-to-application", "from_glob": "src/domain/**/*", "import_pattern": r"^src/application(?:/|$)"},
+    {"id": "domain-to-adapters", "from_glob": "src/domain/**/*", "import_pattern": r"^src/adapters(?:/|$)"},
+    {"id": "domain-to-frameworks", "from_glob": "src/domain/**/*", "import_pattern": framework_pattern},
+    {"id": "application-to-adapters", "from_glob": "src/application/**/*", "import_pattern": r"^src/adapters(?:/|$)"},
+    {"id": "application-to-frameworks", "from_glob": "src/application/**/*", "import_pattern": framework_pattern},
+    {"id": "inbound-to-outbound-adapters", "from_glob": "src/adapters/inbound/**/*", "import_pattern": r"^src/adapters/outbound(?:/|$)"},
 ]
 expected_boundaries = [
-    {"id": "domain-public-api", "from_glob": "src/**/*", "module_pattern": "src/domain/*/", "allowed_entry": "index.ts"},
-    {"id": "application-public-api", "from_glob": "src/**/*", "module_pattern": "src/application/*/", "allowed_entry": "index.ts"},
-    {"id": "inbound-adapter-public-api", "from_glob": "src/**/*", "module_pattern": "src/adapters/inbound/*/", "allowed_entry": "index.ts"},
-    {"id": "outbound-adapter-public-api", "from_glob": "src/**/*", "module_pattern": "src/adapters/outbound/*/", "allowed_entry": "index.ts"},
+    {"id": "domain-public-api", "from_glob": "src/**/*", "module_pattern": "src/domain/*/", "allowed_entry": "index.ts", "same_module": "allow"},
+    {"id": "application-public-api", "from_glob": "src/**/*", "module_pattern": "src/application/*/", "allowed_entry": "index.ts", "same_module": "allow"},
+    {"id": "inbound-adapter-public-api", "from_glob": "src/**/*", "module_pattern": "src/adapters/inbound/*/", "allowed_entry": "index.ts", "same_module": "allow"},
+    {"id": "outbound-adapter-public-api", "from_glob": "src/**/*", "module_pattern": "src/adapters/outbound/*/", "allowed_entry": "index.ts", "same_module": "allow"},
 ]
-raw_only = {"id": "raw-sdk-dependency", "from_glob": "src/**/*", "import_pattern": "@modelcontextprotocol/sdk"}
+raw_only = {"id": "raw-sdk-dependency", "from_glob": "src/**/*", "import_pattern": r"^@modelcontextprotocol/sdk(?:/|$)"}
 expected_rules = {
     "typescript-raw-boundaries.yaml": {
-        "version": 1, "implementation": "typescript-raw", "architecture": "hexagonal", "source_root": "src",
-        "deny": common_deny + [raw_only], "boundaries": expected_boundaries,
+        "schema_version": 2, "implementation": "typescript-raw", "architecture": "hexagonal", "source_root": "src",
+        "matching": matching, "deny": common_deny + [raw_only], "boundaries": expected_boundaries,
     },
     "typescript-sdk-boundaries.yaml": {
-        "version": 1, "implementation": "typescript-sdk", "architecture": "hexagonal", "source_root": "src",
-        "deny": common_deny, "boundaries": expected_boundaries,
+        "schema_version": 2, "implementation": "typescript-sdk", "architecture": "hexagonal", "source_root": "src",
+        "matching": matching, "deny": common_deny, "boundaries": expected_boundaries,
     },
 }
-for name in sorted(actual_rules):
+for name in sorted(actual_rule_entries & rule_names):
     path = rules / name
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -150,16 +187,40 @@ for name in sorted(actual_rules):
     if data != expected_rules[name]:
         fail(f"{name}: parsed contract differs from the exact approved boundary schema")
 
-# Validate links and leaked harness syntax across deliverable text formats.
-link_re = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
-text_suffixes = {".md", ".json", ".yaml", ".yml", ".mmd", ".txt"}
-for path in ROOT.rglob("*"):
-    if not path.is_file() or ".git" in path.parts or path.suffix.lower() not in text_suffixes:
+# Prove the regex dialect bites on deep/barrel imports without catching near misses.
+pattern_cases = {
+    raw_only["import_pattern"]: (["@modelcontextprotocol/sdk", "@modelcontextprotocol/sdk/server/mcp.js"], ["@modelcontextprotocol/sdk-tools"]),
+    r"^src/application(?:/|$)": (["src/application", "src/application/use-cases/open.js"], ["src/application-kit"]),
+    r"^src/adapters(?:/|$)": (["src/adapters", "src/adapters/inbound/mcp.js"], ["src/adapters-old"]),
+    r"^src/adapters/outbound(?:/|$)": (["src/adapters/outbound", "src/adapters/outbound/dynamodb.js"], ["src/adapters/outbound-old"]),
+    framework_pattern: (["node:http", "https", "@aws-sdk/client-dynamodb", "aws-sdk", "@modelcontextprotocol/sdk/client/index.js"], ["node:http2", "my-http", "@aws-sdkish/client"]),
+}
+for pattern, (positives, negatives) in pattern_cases.items():
+    try:
+        compiled = re.compile(pattern)
+    except re.error as exc:
+        fail(f"invalid import_pattern regex {pattern!r}: {exc}")
         continue
-    body = read(path)
-    if re.search(r"\[\[[^]]+\]\]", body):
+    for value in positives:
+        if not compiled.search(value):
+            fail(f"import_pattern {pattern!r} misses required import {value!r}")
+    for value in negatives:
+        if compiled.search(value):
+            fail(f"import_pattern {pattern!r} catches near-miss import {value!r}")
+
+# Validate links and leaked harness syntax across deliverable text files.
+link_re = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
+wrapper_re = re.compile(r"^\s*</?(?:(?:antml|tool):)?(?:content|invoke|parameter)(?:\s+[^>]*)?>\s*$", re.MULTILINE)
+for path in ROOT.rglob("*"):
+    if not path.is_file() or ".git" in path.parts:
+        continue
+    try:
+        body = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        continue
+    if path.suffix.lower() in {".md", ".mmd", ".txt"} and re.search(r"\[\[[^]]+\]\]", body):
         fail(f"wikilink found in {path.relative_to(ROOT)}")
-    if re.search(r"^\s*</(content|invoke|parameter)>\s*$", body, re.MULTILINE):
+    if wrapper_re.search(body):
         fail(f"wrapper tag leaked in {path.relative_to(ROOT)}")
     for target in link_re.findall(body):
         clean = target.split("#", 1)[0]
@@ -188,7 +249,9 @@ elif not all(
     for token in [
         "stateless-mcp-incident-lab-architecture",
         f"Scaffolded {scaffold_date}",
-        "4 `Status: Proposed` ADR stubs",
+        "4 Proposed ADR stubs",
+        "all 4 are now `Status: Accepted`",
+        "`ARCH-001`–`ARCH-006` citations reserved",
     ]
 ):
     fail("sibling PLAN architecture row does not match repo, scaffold date, count, and status")

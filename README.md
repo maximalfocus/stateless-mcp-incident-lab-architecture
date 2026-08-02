@@ -13,17 +13,25 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 
 ## Directories
 
-- `adr/` — proposed and accepted architecture decisions.
-- `diagrams/` — Mermaid source and rendered deployment diagrams.
-- `rules/` — byte-faithful implementation boundary rules derived from architecture goldens.
+- `adr/` — accepted architecture decisions; future decisions begin as Proposed.
+- `diagrams/` — reserved for Mermaid deployment sources and rendered artifacts after deployed acceptance.
+- `rules/` — machine-consumable implementation boundary contracts that downstream architecture goldens must mirror exactly.
 
-`diagrams/` remains intentionally empty until deployed topology is verified. `rules/` contains the raw and SDK implementation boundary contracts pinned by `ARCH-001`–`ARCH-004`.
+`diagrams/` remains intentionally empty until deployed topology is verified. `rules/` contains the raw and SDK contracts reserved for `ARCH-001`–`ARCH-004`; those golden files do not exist yet.
 
 ## Lifecycle
 
-`/cdd-author` promoted these PRD-level decisions to `Accepted` when the backend conformance round pinned them. Accepted ADRs are append-only and are superseded by new ADRs rather than edited in place.
+`/cdd-author` promoted these PRD-level decisions to `Accepted` before the backend conformance round cites them. Accepted ADRs are append-only and are superseded by new ADRs rather than edited in place.
 
-`scripts/verify-architecture.py` enforces accepted-ADR immutability against git history and parses every boundary YAML with a real loader. Rendered-diagram verification is activated when acceptance authors the first deployment diagram.
+`scripts/verify-architecture.py` enforces accepted-ADR immutability against git history and parses every boundary YAML with a real loader. Deployed acceptance must add diagram-fidelity checks in the same change that introduces the first deployment diagram; until then, the gate requires `diagrams/` to remain empty.
+
+## Boundary matching contract
+
+- `from_glob` and `module_pattern` are POSIX-style globs over workspace-relative source paths/directories.
+- `import_pattern` is an anchored ECMAScript regular expression searched against a canonical import.
+- Bare package specifiers remain unchanged. Relative and aliased imports resolve to workspace-root source paths before matching.
+- Public-entry checks operate on resolved source modules: cross-module imports must resolve to `index.ts`; imports within the same module are allowed.
+- Runners must prove non-vacuity with deep, barrel, and near-miss imports for every assertion.
 
 ## Validation
 

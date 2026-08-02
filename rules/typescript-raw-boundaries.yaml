@@ -1,42 +1,54 @@
-version: 1
+schema_version: 2
 implementation: typescript-raw
 architecture: hexagonal
 source_root: src
+matching:
+  from_glob: posix-glob-over-source-path
+  import_pattern: ecmascript-regex-search-over-canonical-import
+  module_pattern: posix-glob-over-source-directory
+  canonical_import: bare packages remain unchanged; relative and aliased imports resolve to workspace-root source paths
 
 deny:
   - id: domain-to-application
     from_glob: src/domain/**/*
-    import_pattern: src/application/**
+    import_pattern: '^src/application(?:/|$)'
   - id: domain-to-adapters
     from_glob: src/domain/**/*
-    import_pattern: src/adapters/**
+    import_pattern: '^src/adapters(?:/|$)'
   - id: domain-to-frameworks
     from_glob: src/domain/**/*
-    import_pattern: '@modelcontextprotocol/sdk|node:http|@aws-sdk/.*'
+    import_pattern: '^(@modelcontextprotocol/sdk(?:/|$)|node:(?:http|https)$|(?:http|https)$|@aws-sdk/|aws-sdk(?:/|$))'
   - id: application-to-adapters
     from_glob: src/application/**/*
-    import_pattern: src/adapters/**
+    import_pattern: '^src/adapters(?:/|$)'
+  - id: application-to-frameworks
+    from_glob: src/application/**/*
+    import_pattern: '^(@modelcontextprotocol/sdk(?:/|$)|node:(?:http|https)$|(?:http|https)$|@aws-sdk/|aws-sdk(?:/|$))'
   - id: inbound-to-outbound-adapters
     from_glob: src/adapters/inbound/**/*
-    import_pattern: src/adapters/outbound/**
+    import_pattern: '^src/adapters/outbound(?:/|$)'
   - id: raw-sdk-dependency
     from_glob: src/**/*
-    import_pattern: '@modelcontextprotocol/sdk'
+    import_pattern: '^@modelcontextprotocol/sdk(?:/|$)'
 
 boundaries:
   - id: domain-public-api
     from_glob: src/**/*
     module_pattern: src/domain/*/
     allowed_entry: index.ts
+    same_module: allow
   - id: application-public-api
     from_glob: src/**/*
     module_pattern: src/application/*/
     allowed_entry: index.ts
+    same_module: allow
   - id: inbound-adapter-public-api
     from_glob: src/**/*
     module_pattern: src/adapters/inbound/*/
     allowed_entry: index.ts
+    same_module: allow
   - id: outbound-adapter-public-api
     from_glob: src/**/*
     module_pattern: src/adapters/outbound/*/
     allowed_entry: index.ts
+    same_module: allow
