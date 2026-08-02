@@ -90,7 +90,7 @@ for directory_name in ["diagrams", "rules"]:
     if not directory.is_dir():
         fail(f"missing directory: {directory_name}/")
         continue
-    entries = {str(path.relative_to(directory)) for path in directory.rglob("*") if path.is_file()}
+    entries = {str(path.relative_to(directory)) for path in directory.rglob("*")}
     if entries != {".gitkeep"}:
         fail(f"{directory_name}/ should contain only .gitkeep, found {sorted(entries)}")
 
@@ -118,7 +118,7 @@ try:
         cwd=ROOT,
         text=True,
     ).splitlines()[0]
-except (subprocess.CalledProcessError, IndexError) as exc:
+except (OSError, subprocess.CalledProcessError, IndexError) as exc:
     fail(f"cannot derive scaffold date from git history: {exc}")
     scaffold_date = ""
 

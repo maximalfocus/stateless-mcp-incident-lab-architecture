@@ -17,6 +17,10 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 - `diagrams/` — Mermaid source and rendered deployment diagrams.
 - `rules/` — byte-faithful implementation boundary rules derived from architecture goldens.
 
+`diagrams/` and `rules/` are intentionally empty; a citing conformance or acceptance round authors their first artifacts.
+
 ## Lifecycle
 
 These stubs record PRD-level decisions only. `/cdd-author` promotes an ADR to `Accepted` when a conformance round cites it, after updating the complete ADR surface and running architecture peer review. Accepted ADRs are append-only and are superseded by new ADRs rather than edited in place.
+
+When the first Accepted ADR, rendered diagram, or boundary rule lands, `scripts/verify-architecture.py` must gain the checks it defers today: append-only enforcement against ADR history, rendered-diagram verification, and parsing every boundary YAML with a real loader.
