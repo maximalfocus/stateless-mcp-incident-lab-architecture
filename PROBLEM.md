@@ -8,6 +8,12 @@ The project has two independent implementations, local and AWS deployment paths,
 
 Review ADRs, diagrams, and boundary rules against the approved sibling PRD and active PLAN. At scaffold time, only structural completeness and faithful representation of PRD-level decisions are in scope. Substantive promotion occurs lazily when `/cdd-author` creates citing goldens.
 
+## Non-goals
+
+- Promoting any ADR before a citing conformance round exists.
+- Authoring deployment diagrams, implementation boundary YAML, conformance goldens, or implementation code during scaffold review.
+- Reopening user-approved product scope unless an ADR directly contradicts the sibling PRD or PLAN.
+
 ## Acceptance criteria
 
 1. Every ADR records Status, Context, Decision, Consequences, and Related source anchors.
@@ -20,12 +26,12 @@ Review ADRs, diagrams, and boundary rules against the approved sibling PRD and a
 ## Verification
 
 ```bash
-grep -L '^Status: \(Proposed\|Accepted\|Deprecated\|Superseded\)$' adr/*.md
-grep -rnE '^[[:space:]]*</(content|invoke|parameter)>[[:space:]]*$' .
-find diagrams rules -type f ! -name .gitkeep -print
+python3 scripts/verify-architecture.py
+git diff --check
+git status --short
 ```
 
-At scaffold time all commands must produce no output. Later reviews extend the gate for diagrams, YAML parsing, and citation closure.
+The verifier pins the four-file ADR set, required sections and Proposed statuses, README parity, sibling-source links, empty diagram/rule directories, wrapper/wikilink absence, and reconciliation with the sibling PLAN. Later reviews extend the gate for rendered diagrams, YAML parsing, and conformance citation closure.
 
 ## Residuals
 
