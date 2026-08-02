@@ -116,7 +116,30 @@ expected_rules = {"typescript-raw-boundaries.yaml", "typescript-sdk-boundaries.y
 actual_rules = {path.name for path in rules.glob("*.yaml")} if rules.is_dir() else set()
 if actual_rules != expected_rules:
     fail(f"boundary rule set differs: missing={sorted(expected_rules-actual_rules)} extra={sorted(actual_rules-expected_rules)}")
-parsed_rules: dict[str, dict] = {}
+common_deny = [
+    {"id": "domain-to-application", "from_glob": "src/domain/**/*", "import_pattern": "src/application/**"},
+    {"id": "domain-to-adapters", "from_glob": "src/domain/**/*", "import_pattern": "src/adapters/**"},
+    {"id": "domain-to-frameworks", "from_glob": "src/domain/**/*", "import_pattern": "@modelcontextprotocol/sdk|node:http|@aws-sdk/.*"},
+    {"id": "application-to-adapters", "from_glob": "src/application/**/*", "import_pattern": "src/adapters/**"},
+    {"id": "inbound-to-outbound-adapters", "from_glob": "src/adapters/inbound/**/*", "import_pattern": "src/adapters/outbound/**"},
+]
+expected_boundaries = [
+    {"id": "domain-public-api", "from_glob": "src/**/*", "module_pattern": "src/domain/*/", "allowed_entry": "index.ts"},
+    {"id": "application-public-api", "from_glob": "src/**/*", "module_pattern": "src/application/*/", "allowed_entry": "index.ts"},
+    {"id": "inbound-adapter-public-api", "from_glob": "src/**/*", "module_pattern": "src/adapters/inbound/*/", "allowed_entry": "index.ts"},
+    {"id": "outbound-adapter-public-api", "from_glob": "src/**/*", "module_pattern": "src/adapters/outbound/*/", "allowed_entry": "index.ts"},
+]
+raw_only = {"id": "raw-sdk-dependency", "from_glob": "src/**/*", "import_pattern": "@modelcontextprotocol/sdk"}
+expected_rules = {
+    "typescript-raw-boundaries.yaml": {
+        "version": 1, "implementation": "typescript-raw", "architecture": "hexagonal", "source_root": "src",
+        "deny": common_deny + [raw_only], "boundaries": expected_boundaries,
+    },
+    "typescript-sdk-boundaries.yaml": {
+        "version": 1, "implementation": "typescript-sdk", "architecture": "hexagonal", "source_root": "src",
+        "deny": common_deny, "boundaries": expected_boundaries,
+    },
+}
 for name in sorted(actual_rules):
     path = rules / name
     try:
@@ -124,29 +147,8 @@ for name in sorted(actual_rules):
     except (OSError, yaml.YAMLError) as exc:
         fail(f"{name}: invalid YAML: {exc}")
         continue
-    if not isinstance(data, dict):
-        fail(f"{name}: YAML root must be an object")
-        continue
-    parsed_rules[name] = data
-    if data.get("version") != 1 or data.get("architecture") != "hexagonal" or data.get("source_root") != "src":
-        fail(f"{name}: version/architecture/source_root contract differs")
-    for collection in ["deny", "boundaries"]:
-        values = data.get(collection)
-        if not isinstance(values, list) or not values:
-            fail(f"{name}: {collection} must be a non-empty list")
-            continue
-        ids = [item.get("id") for item in values if isinstance(item, dict)]
-        if len(ids) != len(values) or len(ids) != len(set(ids)) or not all(isinstance(item, str) and item for item in ids):
-            fail(f"{name}: {collection} entries need unique non-empty ids")
-
-raw = parsed_rules.get("typescript-raw-boundaries.yaml", {})
-sdk = parsed_rules.get("typescript-sdk-boundaries.yaml", {})
-if raw and sdk:
-    if raw.get("deny", [])[:-1] != sdk.get("deny") or raw.get("boundaries") != sdk.get("boundaries"):
-        fail("raw and SDK common boundary assertions are not byte-faithful equivalents")
-    raw_only = raw.get("deny", [])[-1]
-    if raw_only != {"id": "raw-sdk-dependency", "from_glob": "src/**/*", "import_pattern": "@modelcontextprotocol/sdk"}:
-        fail("raw implementation lacks the exact SDK dependency prohibition")
+    if data != expected_rules[name]:
+        fail(f"{name}: parsed contract differs from the exact approved boundary schema")
 
 # Validate links and leaked harness syntax across deliverable text formats.
 link_re = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
