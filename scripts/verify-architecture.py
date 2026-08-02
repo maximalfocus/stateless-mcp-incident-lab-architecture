@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import yaml
 
@@ -38,24 +38,28 @@ def section_bodies(body: str, heading: str) -> list[str]:
 
 adr_contracts = {
     "0001-independent-raw-sdk-realizations.md": {
+        "accepted_commit": "8aacb4f73caab65cff80f69459162e6c9a066337",
         "title": "# ADR-0001: Independent raw and SDK realizations",
         "decision": "Independent raw and SDK realizations behind one contract",
         "pinned": "`ARCH-001`–`ARCH-004`",
         "conformance": "ARCH-001 through ARCH-004",
     },
     "0002-dynamodb-explicit-application-state.md": {
+        "accepted_commit": "8aacb4f73caab65cff80f69459162e6c9a066337",
         "title": "# ADR-0002: DynamoDB for explicit application state",
         "decision": "DynamoDB for explicit application state across replicas",
         "pinned": "`ARCH-005`",
         "conformance": "ARCH-005",
     },
     "0003-fargate-alb-streamable-http.md": {
+        "accepted_commit": "8aacb4f73caab65cff80f69459162e6c9a066337",
         "title": "# ADR-0003: ECS Fargate and ALB for Streamable HTTP",
         "decision": "ECS Fargate and ALB for Streamable HTTP and SSE",
         "pinned": "`ARCH-006`",
         "conformance": "ARCH-006",
     },
     "0004-ephemeral-unauthenticated-core-lab.md": {
+        "accepted_commit": "8aacb4f73caab65cff80f69459162e6c9a066337",
         "title": "# ADR-0004: Ephemeral unauthenticated core lab",
         "decision": "Ephemeral synthetic deployment with auth deferred",
         "pinned": "`ARCH-006`",
@@ -73,31 +77,33 @@ for path in sorted(adr_dir.glob("*.md")):
     body = read(path)
     contract = adr_contracts.get(path.name)
     headings = re.findall(r"^# .+$", body, re.MULTILINE)
-    if contract and headings[:1] != [contract["title"]]:
-        fail(f"{path.name}: H1 does not match its ADR number and indexed title")
+    if contract and headings != [contract["title"]]:
+        fail(f"{path.name}: expected exactly one H1 matching its ADR number and indexed title")
+    expected_status = contract.get("status", "Accepted") if contract else ""
     statuses = re.findall(r"^Status:\s*(\S.*)$", body, re.MULTILINE)
-    if statuses != ["Accepted"]:
-        fail(f"{path.name}: expected exactly one Accepted status, found {statuses}")
+    if statuses != [expected_status]:
+        fail(f"{path.name}: expected exactly one {expected_status} status, found {statuses}")
 
-    # Once an Accepted version exists anywhere in history, its bytes are immutable.
-    try:
-        commits = subprocess.check_output(
-            ["git", "log", "--all", "--follow", "--reverse", "-SStatus: Accepted", "--format=%H", "--", str(path.relative_to(ROOT))],
-            cwd=ROOT,
-            text=True,
-        ).splitlines()
-        if not commits:
-            fail(f"{path.name}: Accepted ADR has no acceptance commit in git history")
-        else:
+    # Accepted bytes are pinned to the reviewed promotion commit, not a mutable ref search.
+    if expected_status == "Accepted":
+        try:
+            accepted_commit = contract["accepted_commit"] if contract else ""
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", accepted_commit, "HEAD"],
+                cwd=ROOT,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             accepted = subprocess.check_output(
-                ["git", "show", f"{commits[0]}:{path.relative_to(ROOT)}"],
+                ["git", "show", f"{accepted_commit}:{path.relative_to(ROOT)}"],
                 cwd=ROOT,
                 text=True,
             )
             if body != accepted:
-                fail(f"{path.name}: Accepted ADR differs from its first accepted version; supersede it instead")
-    except (OSError, subprocess.CalledProcessError) as exc:
-        fail(f"{path.name}: cannot verify Accepted ADR history: {exc}")
+                fail(f"{path.name}: Accepted ADR differs from pinned commit {accepted_commit[:12]}; supersede it instead")
+        except (OSError, subprocess.CalledProcessError, KeyError) as exc:
+            fail(f"{path.name}: cannot verify pinned Accepted ADR: {exc}")
     for heading in required_sections:
         bodies = section_bodies(body, heading)
         if len(bodies) != 1 or not bodies[0]:
@@ -146,27 +152,27 @@ actual_rule_entries = {str(path.relative_to(rules)) for path in rules.rglob("*")
 if actual_rule_entries != rule_names:
     fail(f"boundary rule set differs: expected={sorted(rule_names)} actual={sorted(actual_rule_entries)}")
 matching = {
-    "from_glob": "posix-glob-over-source-path",
-    "import_pattern": "ecmascript-regex-search-over-canonical-import",
-    "module_pattern": "posix-glob-over-source-directory",
-    "canonical_import": "bare packages remain unchanged; relative and aliased imports resolve to workspace-root source paths",
+    "from_glob": "gitignore-style-globstar-over-source-path",
+    "import_pattern": "portable-ecmascript-python-regex-search-over-canonical-import",
+    "module_pattern": "gitignore-style-globstar-over-source-directory",
+    "canonical_import": "bare packages remain unchanged; relative and aliased imports resolve to workspace-root TypeScript source paths",
 }
-framework_pattern = r"^(@modelcontextprotocol/sdk(?:/|$)|node:(?:http|https)$|(?:http|https)$|@aws-sdk/|aws-sdk(?:/|$))"
+framework_pattern = r"^(@modelcontextprotocol/sdk(?:/|$)|node:(?:http|https|http2|net|tls)$|(?:http|https)$|@aws-sdk/|aws-sdk(?:/|$)|undici(?:/|$)|express(?:/|$)|fastify(?:/|$))"
 common_deny = [
-    {"id": "domain-to-application", "from_glob": "src/domain/**/*", "import_pattern": r"^src/application(?:/|$)"},
-    {"id": "domain-to-adapters", "from_glob": "src/domain/**/*", "import_pattern": r"^src/adapters(?:/|$)"},
-    {"id": "domain-to-frameworks", "from_glob": "src/domain/**/*", "import_pattern": framework_pattern},
-    {"id": "application-to-adapters", "from_glob": "src/application/**/*", "import_pattern": r"^src/adapters(?:/|$)"},
-    {"id": "application-to-frameworks", "from_glob": "src/application/**/*", "import_pattern": framework_pattern},
-    {"id": "inbound-to-outbound-adapters", "from_glob": "src/adapters/inbound/**/*", "import_pattern": r"^src/adapters/outbound(?:/|$)"},
+    {"id": "domain-to-application", "from_glob": "src/domain/**", "import_pattern": r"^src/application(?:/|$)"},
+    {"id": "domain-to-adapters", "from_glob": "src/domain/**", "import_pattern": r"^src/adapters(?:/|$)"},
+    {"id": "domain-to-frameworks", "from_glob": "src/domain/**", "import_pattern": framework_pattern},
+    {"id": "application-to-adapters", "from_glob": "src/application/**", "import_pattern": r"^src/adapters(?:/|$)"},
+    {"id": "application-to-frameworks", "from_glob": "src/application/**", "import_pattern": framework_pattern},
+    {"id": "inbound-to-outbound-adapters", "from_glob": "src/adapters/inbound/**", "import_pattern": r"^src/adapters/outbound(?:/|$)"},
 ]
 expected_boundaries = [
-    {"id": "domain-public-api", "from_glob": "src/**/*", "module_pattern": "src/domain/*/", "allowed_entry": "index.ts", "same_module": "allow"},
-    {"id": "application-public-api", "from_glob": "src/**/*", "module_pattern": "src/application/*/", "allowed_entry": "index.ts", "same_module": "allow"},
-    {"id": "inbound-adapter-public-api", "from_glob": "src/**/*", "module_pattern": "src/adapters/inbound/*/", "allowed_entry": "index.ts", "same_module": "allow"},
-    {"id": "outbound-adapter-public-api", "from_glob": "src/**/*", "module_pattern": "src/adapters/outbound/*/", "allowed_entry": "index.ts", "same_module": "allow"},
+    {"id": "domain-public-api", "from_glob": "src/**", "module_pattern": "src/domain/*/", "allowed_entry": "index.ts", "same_module": "allow"},
+    {"id": "application-public-api", "from_glob": "src/**", "module_pattern": "src/application/*/", "allowed_entry": "index.ts", "same_module": "allow"},
+    {"id": "inbound-adapter-public-api", "from_glob": "src/**", "module_pattern": "src/adapters/inbound/*/", "allowed_entry": "index.ts", "same_module": "allow"},
+    {"id": "outbound-adapter-public-api", "from_glob": "src/**", "module_pattern": "src/adapters/outbound/*/", "allowed_entry": "index.ts", "same_module": "allow"},
 ]
-raw_only = {"id": "raw-sdk-dependency", "from_glob": "src/**/*", "import_pattern": r"^@modelcontextprotocol/sdk(?:/|$)"}
+raw_only = {"id": "raw-sdk-dependency", "from_glob": "src/**", "import_pattern": r"^@modelcontextprotocol/sdk(?:/|$)"}
 expected_rules = {
     "typescript-raw-boundaries.yaml": {
         "schema_version": 2, "implementation": "typescript-raw", "architecture": "hexagonal", "source_root": "src",
@@ -187,19 +193,26 @@ for name in sorted(actual_rule_entries & rule_names):
     if data != expected_rules[name]:
         fail(f"{name}: parsed contract differs from the exact approved boundary schema")
 
-# Prove the regex dialect bites on deep/barrel imports without catching near misses.
+# Prove every declared import regex bites on deep/barrel imports without catching near misses.
 pattern_cases = {
     raw_only["import_pattern"]: (["@modelcontextprotocol/sdk", "@modelcontextprotocol/sdk/server/mcp.js"], ["@modelcontextprotocol/sdk-tools"]),
-    r"^src/application(?:/|$)": (["src/application", "src/application/use-cases/open.js"], ["src/application-kit"]),
-    r"^src/adapters(?:/|$)": (["src/adapters", "src/adapters/inbound/mcp.js"], ["src/adapters-old"]),
-    r"^src/adapters/outbound(?:/|$)": (["src/adapters/outbound", "src/adapters/outbound/dynamodb.js"], ["src/adapters/outbound-old"]),
-    framework_pattern: (["node:http", "https", "@aws-sdk/client-dynamodb", "aws-sdk", "@modelcontextprotocol/sdk/client/index.js"], ["node:http2", "my-http", "@aws-sdkish/client"]),
+    r"^src/application(?:/|$)": (["src/application", "src/application/use-cases/open.ts"], ["src/application-kit"]),
+    r"^src/adapters(?:/|$)": (["src/adapters", "src/adapters/inbound/mcp.ts"], ["src/adapters-old"]),
+    r"^src/adapters/outbound(?:/|$)": (["src/adapters/outbound", "src/adapters/outbound/dynamodb.ts"], ["src/adapters/outbound-old"]),
+    framework_pattern: (
+        ["node:http", "node:http2", "node:net", "node:tls", "https", "@aws-sdk/client-dynamodb", "aws-sdk", "undici", "express", "fastify", "@modelcontextprotocol/sdk/client/index.js"],
+        ["my-http", "@aws-sdkish/client", "expressive", "fastify-tools"],
+    ),
 }
+declared_patterns = {rule["import_pattern"] for rule in common_deny + [raw_only]}
+if declared_patterns != set(pattern_cases):
+    fail(f"import_pattern fixtures lack closure: unproven={sorted(declared_patterns-set(pattern_cases))} stale={sorted(set(pattern_cases)-declared_patterns)}")
 for pattern, (positives, negatives) in pattern_cases.items():
     try:
         compiled = re.compile(pattern)
-    except re.error as exc:
-        fail(f"invalid import_pattern regex {pattern!r}: {exc}")
+        subprocess.run(["node", "-e", "new RegExp(process.argv[1])", pattern], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (re.error, OSError, subprocess.CalledProcessError) as exc:
+        fail(f"import_pattern is not portable across Python and ECMAScript {pattern!r}: {exc}")
         continue
     for value in positives:
         if not compiled.search(value):
@@ -208,9 +221,41 @@ for pattern, (positives, negatives) in pattern_cases.items():
         if compiled.search(value):
             fail(f"import_pattern {pattern!r} catches near-miss import {value!r}")
 
+# Prove closure and decisive behavior for every path/module glob and public entry rule.
+glob_cases = {
+    "src/domain/**": (["src/domain/entity.ts", "src/domain/incident/internal/rule.ts"], ["src/domainish/entity.ts"]),
+    "src/application/**": (["src/application/use-case.ts", "src/application/incidents/open.ts"], ["src/application-kit/open.ts"]),
+    "src/adapters/inbound/**": (["src/adapters/inbound/mcp.ts", "src/adapters/inbound/http/routes.ts"], ["src/adapters/inbound-old/http.ts"]),
+    "src/**": (["src/index.ts", "src/domain/incident/entity.ts"], ["test/domain/entity.ts"]),
+    "src/domain/*/": (["src/domain/incident"], ["src/domain/incident/internal", "src/domainish/incident"]),
+    "src/application/*/": (["src/application/incidents"], ["src/application/incidents/internal", "src/application-kit/incidents"]),
+    "src/adapters/inbound/*/": (["src/adapters/inbound/mcp"], ["src/adapters/inbound/mcp/internal", "src/adapters/inbound-old/mcp"]),
+    "src/adapters/outbound/*/": (["src/adapters/outbound/dynamodb"], ["src/adapters/outbound/dynamodb/internal", "src/adapters/outbound-old/dynamodb"]),
+}
+declared_globs = {rule["from_glob"] for rule in common_deny + [raw_only] + expected_boundaries} | {rule["module_pattern"] for rule in expected_boundaries}
+if declared_globs != set(glob_cases):
+    fail(f"glob fixtures lack closure: unproven={sorted(declared_globs-set(glob_cases))} stale={sorted(set(glob_cases)-declared_globs)}")
+for pattern, (positives, negatives) in glob_cases.items():
+    normalized = pattern.rstrip("/")
+    for value in positives:
+        if not PurePosixPath(value).full_match(normalized):
+            fail(f"glob {pattern!r} misses required path {value!r}")
+    for value in negatives:
+        if PurePosixPath(value).full_match(normalized):
+            fail(f"glob {pattern!r} catches near-miss path {value!r}")
+for rule in expected_boundaries:
+    root = rule["module_pattern"].replace("*/", "sample/")
+    same_module_internal = root + "internal.ts"
+    cross_module_barrel = root + rule["allowed_entry"]
+    cross_module_internal = root + "internal.ts"
+    if rule["same_module"] != "allow" or not same_module_internal.startswith(root):
+        fail(f"{rule['id']}: same-module import is not allowed")
+    if cross_module_barrel != root + "index.ts" or cross_module_internal == cross_module_barrel:
+        fail(f"{rule['id']}: public-entry discriminator is vacuous")
+
 # Validate links and leaked harness syntax across deliverable text files.
 link_re = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
-wrapper_re = re.compile(r"^\s*</?(?:(?:antml|tool):)?(?:content|invoke|parameter)(?:\s+[^>]*)?>\s*$", re.MULTILINE)
+wrapper_re = re.compile("<" + r"/?(?:(?:antml|tool):)?(?:function_calls|function_results|content|invoke|parameter)(?:\s+[^>]*)?/?>")
 for path in ROOT.rglob("*"):
     if not path.is_file() or ".git" in path.parts:
         continue
@@ -222,12 +267,13 @@ for path in ROOT.rglob("*"):
         fail(f"wikilink found in {path.relative_to(ROOT)}")
     if wrapper_re.search(body):
         fail(f"wrapper tag leaked in {path.relative_to(ROOT)}")
-    for target in link_re.findall(body):
-        clean = target.split("#", 1)[0]
-        if not clean or re.match(r"^[a-z][a-z0-9+.-]*:", clean, re.IGNORECASE):
-            continue
-        if not (path.parent / clean).resolve().exists():
-            fail(f"broken link: {path.relative_to(ROOT)} -> {target}")
+    if path.suffix.lower() in {".md", ".mmd", ".txt"}:
+        for target in link_re.findall(body):
+            clean = target.split("#", 1)[0]
+            if not clean or re.match(r"^[a-z][a-z0-9+.-]*:", clean, re.IGNORECASE):
+                continue
+            if not (path.parent / clean).resolve().exists():
+                fail(f"broken link: {path.relative_to(ROOT)} -> {target}")
 
 try:
     scaffold_date = subprocess.check_output(
@@ -242,19 +288,13 @@ except (OSError, subprocess.CalledProcessError, IndexError) as exc:
 plan = PRD / "PLAN-001-stateless-core.md"
 plan_body = read(plan)
 architecture_rows = [line for line in plan_body.splitlines() if line.startswith("| Architecture |")]
-if len(architecture_rows) != 1:
-    fail(f"expected one Architecture repo-family row, found {len(architecture_rows)}")
-elif not all(
-    token in architecture_rows[0]
-    for token in [
-        "stateless-mcp-incident-lab-architecture",
-        f"Scaffolded {scaffold_date}",
-        "4 Proposed ADR stubs",
-        "all 4 are now `Status: Accepted`",
-        "`ARCH-001`–`ARCH-006` citations reserved",
-    ]
-):
-    fail("sibling PLAN architecture row does not match repo, scaffold date, count, and status")
+expected_architecture_row = (
+    f"| Architecture | `stateless-mcp-incident-lab-architecture` | Scaffolded {scaffold_date} with 4 Proposed ADR stubs; "
+    "all 4 are now `Status: Accepted`, covering independent raw/SDK realizations, DynamoDB state, Fargate/ALB transport, "
+    "and ephemeral auth deferral, with `ARCH-001`–`ARCH-006` citations reserved for the active `/cdd-author` round |"
+)
+if architecture_rows != [expected_architecture_row]:
+    fail("sibling PLAN architecture row does not exactly match repo, scaffold date, count, status, and citation reservation")
 
 if (ROOT / "PROBLEM.md").exists():
     fail("retired peerreview control file present: PROBLEM.md")

@@ -27,11 +27,11 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 
 ## Boundary matching contract
 
-- `from_glob` and `module_pattern` are POSIX-style globs over workspace-relative source paths/directories.
-- `import_pattern` is an anchored ECMAScript regular expression searched against a canonical import.
-- Bare package specifiers remain unchanged. Relative and aliased imports resolve to workspace-root source paths before matching.
+- `from_glob` and `module_pattern` use gitignore-style globstar semantics over workspace-relative source paths/directories: `**` crosses zero or more path segments; `*` stays within one segment.
+- `import_pattern` uses the Python/ECMAScript-compatible regex subset and is searched against a canonical import.
+- Bare package specifiers remain unchanged. Relative and aliased imports resolve to workspace-root TypeScript source paths—including `.ts` source extensions—before matching.
 - Public-entry checks operate on resolved source modules: cross-module imports must resolve to `index.ts`; imports within the same module are allowed.
-- Runners must prove non-vacuity with deep, barrel, and near-miss imports for every assertion.
+- Runners must prove non-vacuity with root/deep paths, barrel/internal entries, and near misses for every assertion.
 
 ## Validation
 
