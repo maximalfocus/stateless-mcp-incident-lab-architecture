@@ -27,7 +27,7 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 
 ## Boundary matching contract
 
-- `from_glob` and `module_pattern` use gitignore-style globstar semantics over workspace-relative source paths/directories: `**` crosses zero or more path segments; `*` stays within one segment.
+- `from_glob` and `module_pattern` use gitignore-style globstar semantics over workspace-relative source paths/directories: `**` spans arbitrarily deep descendants; `*` stays within one segment.
 - `import_pattern` uses the Python/ECMAScript-compatible regex subset and is searched against a canonical import.
 - Bare package specifiers remain unchanged. Relative and aliased imports resolve to workspace-root TypeScript source paths—including `.ts` source extensions—before matching.
 - Public-entry checks operate on resolved source modules: cross-module imports must resolve to `index.ts`; imports within the same module are allowed.
@@ -35,4 +35,4 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 
 ## Validation
 
-Install the pinned parser with `python3 -m pip install -r requirements.txt`, then run `python3 scripts/verify-architecture.py`.
+Use Python 3.10+ and Node.js 18+ for the architecture gate. Install the pinned parser with `python3 -m pip install -r requirements.txt`, then run `python3 scripts/verify-architecture.py` and `python3 scripts/test-verify-architecture.py`.

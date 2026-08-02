@@ -2,10 +2,12 @@
 """Structural and sibling-consistency gate for accepted architecture contracts."""
 from __future__ import annotations
 
+import json
 import re
+import shutil
 import subprocess
 import sys
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import yaml
 
@@ -122,8 +124,8 @@ for path in sorted(adr_dir.glob("*.md")):
 readme = read(ROOT / "README.md")
 row_re = re.compile(r"^\| \[ADR-([0-9]{4})\]\(adr/([^)]+)\) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", re.MULTILINE)
 rows = row_re.findall(readme)
-if len(rows) != 4:
-    fail(f"README must contain exactly four parseable ADR rows, found {len(rows)}")
+if len(rows) != len(expected):
+    fail(f"README must contain exactly {len(expected)} parseable ADR rows, found {len(rows)}")
 row_map = {number: (filename, status.strip(), decision.strip(), pinned.strip()) for number, filename, status, decision, pinned in rows}
 if len(row_map) != len(rows):
     fail("README contains duplicate ADR rows")
@@ -135,7 +137,8 @@ for name in sorted(expected):
         continue
     filename, status, decision, pinned = row
     contract = adr_contracts[name]
-    if filename != name or status != "Accepted" or decision != contract["decision"] or pinned != contract["pinned"]:
+    expected_status = contract.get("status", "Accepted")
+    if filename != name or status != expected_status or decision != contract["decision"] or pinned != contract["pinned"]:
         fail(f"README contract mismatch for ADR-{number}")
 if "Accepted ADRs are append-only" not in readme:
     fail("README does not declare the Accepted-ADR append-only lifecycle")
@@ -165,6 +168,7 @@ common_deny = [
     {"id": "application-to-adapters", "from_glob": "src/application/**", "import_pattern": r"^src/adapters(?:/|$)"},
     {"id": "application-to-frameworks", "from_glob": "src/application/**", "import_pattern": framework_pattern},
     {"id": "inbound-to-outbound-adapters", "from_glob": "src/adapters/inbound/**", "import_pattern": r"^src/adapters/outbound(?:/|$)"},
+    {"id": "outbound-to-inbound-adapters", "from_glob": "src/adapters/outbound/**", "import_pattern": r"^src/adapters/inbound(?:/|$)"},
 ]
 expected_boundaries = [
     {"id": "domain-public-api", "from_glob": "src/**", "module_pattern": "src/domain/*/", "allowed_entry": "index.ts", "same_module": "allow"},
@@ -199,6 +203,7 @@ pattern_cases = {
     r"^src/application(?:/|$)": (["src/application", "src/application/use-cases/open.ts"], ["src/application-kit"]),
     r"^src/adapters(?:/|$)": (["src/adapters", "src/adapters/inbound/mcp.ts"], ["src/adapters-old"]),
     r"^src/adapters/outbound(?:/|$)": (["src/adapters/outbound", "src/adapters/outbound/dynamodb.ts"], ["src/adapters/outbound-old"]),
+    r"^src/adapters/inbound(?:/|$)": (["src/adapters/inbound", "src/adapters/inbound/mcp.ts"], ["src/adapters/inbound-old"]),
     framework_pattern: (
         ["node:http", "node:http2", "node:net", "node:tls", "https", "@aws-sdk/client-dynamodb", "aws-sdk", "undici", "express", "fastify", "@modelcontextprotocol/sdk/client/index.js"],
         ["my-http", "@aws-sdkish/client", "expressive", "fastify-tools"],
@@ -207,13 +212,22 @@ pattern_cases = {
 declared_patterns = {rule["import_pattern"] for rule in common_deny + [raw_only]}
 if declared_patterns != set(pattern_cases):
     fail(f"import_pattern fixtures lack closure: unproven={sorted(declared_patterns-set(pattern_cases))} stale={sorted(set(pattern_cases)-declared_patterns)}")
+node = shutil.which("node")
+if node is None:
+    fail("Node.js is required to verify ECMAScript regex behavior; install Node.js 18 or newer")
 for pattern, (positives, negatives) in pattern_cases.items():
     try:
         compiled = re.compile(pattern)
-        subprocess.run(["node", "-e", "new RegExp(process.argv[1])", pattern], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except (re.error, OSError, subprocess.CalledProcessError) as exc:
-        fail(f"import_pattern is not portable across Python and ECMAScript {pattern!r}: {exc}")
+    except re.error as exc:
+        fail(f"import_pattern is invalid in Python {pattern!r}: {exc}")
         continue
+    if node:
+        payload = json.dumps([pattern, positives, negatives])
+        script = "const [p,yes,no]=JSON.parse(process.argv[1]);const r=new RegExp(p);if(yes.some(x=>!r.test(x))||no.some(x=>r.test(x)))process.exit(1)"
+        try:
+            subprocess.run([node, "-e", script, payload], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            fail(f"import_pattern has different or incorrect ECMAScript behavior {pattern!r}")
     for value in positives:
         if not compiled.search(value):
             fail(f"import_pattern {pattern!r} misses required import {value!r}")
@@ -226,6 +240,7 @@ glob_cases = {
     "src/domain/**": (["src/domain/entity.ts", "src/domain/incident/internal/rule.ts"], ["src/domainish/entity.ts"]),
     "src/application/**": (["src/application/use-case.ts", "src/application/incidents/open.ts"], ["src/application-kit/open.ts"]),
     "src/adapters/inbound/**": (["src/adapters/inbound/mcp.ts", "src/adapters/inbound/http/routes.ts"], ["src/adapters/inbound-old/http.ts"]),
+    "src/adapters/outbound/**": (["src/adapters/outbound/dynamodb.ts", "src/adapters/outbound/store/client.ts"], ["src/adapters/outbound-old/store.ts"]),
     "src/**": (["src/index.ts", "src/domain/incident/entity.ts"], ["test/domain/entity.ts"]),
     "src/domain/*/": (["src/domain/incident"], ["src/domain/incident/internal", "src/domainish/incident"]),
     "src/application/*/": (["src/application/incidents"], ["src/application/incidents/internal", "src/application-kit/incidents"]),
@@ -235,23 +250,48 @@ glob_cases = {
 declared_globs = {rule["from_glob"] for rule in common_deny + [raw_only] + expected_boundaries} | {rule["module_pattern"] for rule in expected_boundaries}
 if declared_globs != set(glob_cases):
     fail(f"glob fixtures lack closure: unproven={sorted(declared_globs-set(glob_cases))} stale={sorted(set(glob_cases)-declared_globs)}")
+def contract_glob_matches(pattern: str, value: str) -> bool:
+    """Evaluate the contract's closed gitignore-style subset without dialect drift."""
+    if pattern.endswith("/**"):
+        prefix = pattern[:-3].rstrip("/") + "/"
+        return value.startswith(prefix) and len(value) > len(prefix)
+    if pattern.endswith("/*/"):
+        prefix = pattern[:-3]
+        if not value.startswith(prefix):
+            return False
+        tail = value[len(prefix):].strip("/")
+        return bool(tail) and "/" not in tail
+    raise ValueError(f"unsupported contract glob: {pattern}")
+
 for pattern, (positives, negatives) in glob_cases.items():
-    normalized = pattern.rstrip("/")
     for value in positives:
-        if not PurePosixPath(value).full_match(normalized):
+        if not contract_glob_matches(pattern, value):
             fail(f"glob {pattern!r} misses required path {value!r}")
     for value in negatives:
-        if PurePosixPath(value).full_match(normalized):
+        if contract_glob_matches(pattern, value):
             fail(f"glob {pattern!r} catches near-miss path {value!r}")
+
+def public_entry_allowed(importer: str, target: str, rule: dict[str, str]) -> bool:
+    prefix = rule["module_pattern"][:-3]
+    if not target.startswith(prefix):
+        return True
+    module_name = target[len(prefix):].split("/", 1)[0]
+    root = f"{prefix}{module_name}/"
+    if rule["same_module"] == "allow" and importer.startswith(root):
+        return True
+    return target == root + rule["allowed_entry"]
+
 for rule in expected_boundaries:
-    root = rule["module_pattern"].replace("*/", "sample/")
-    same_module_internal = root + "internal.ts"
-    cross_module_barrel = root + rule["allowed_entry"]
-    cross_module_internal = root + "internal.ts"
-    if rule["same_module"] != "allow" or not same_module_internal.startswith(root):
-        fail(f"{rule['id']}: same-module import is not allowed")
-    if cross_module_barrel != root + "index.ts" or cross_module_internal == cross_module_barrel:
-        fail(f"{rule['id']}: public-entry discriminator is vacuous")
+    prefix = rule["module_pattern"][:-3]
+    root = prefix + "sample/"
+    same_importer = root + "service.ts"
+    external_importer = "src/other/caller.ts"
+    if not public_entry_allowed(same_importer, root + "entity.ts", rule):
+        fail(f"{rule['id']}: same-module internal import should be allowed")
+    if not public_entry_allowed(external_importer, root + "index.ts", rule):
+        fail(f"{rule['id']}: cross-module public entry should be allowed")
+    if public_entry_allowed(external_importer, root + "entity.ts", rule):
+        fail(f"{rule['id']}: cross-module internal import should be denied")
 
 # Validate links and leaked harness syntax across deliverable text files.
 link_re = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
@@ -288,13 +328,12 @@ except (OSError, subprocess.CalledProcessError, IndexError) as exc:
 plan = PRD / "PLAN-001-stateless-core.md"
 plan_body = read(plan)
 architecture_rows = [line for line in plan_body.splitlines() if line.startswith("| Architecture |")]
-expected_architecture_row = (
-    f"| Architecture | `stateless-mcp-incident-lab-architecture` | Scaffolded {scaffold_date} with 4 Proposed ADR stubs; "
-    "all 4 are now `Status: Accepted`, covering independent raw/SDK realizations, DynamoDB state, Fargate/ALB transport, "
-    "and ephemeral auth deferral, with `ARCH-001`–`ARCH-006` citations reserved for the active `/cdd-author` round |"
+architecture_row_pattern = re.compile(
+    rf"^\| Architecture \| `stateless-mcp-incident-lab-architecture` \| Scaffolded {re.escape(scaffold_date)} with 4 Proposed ADR stubs; "
+    r"all 4 are now `Status: Accepted`, .+ with `ARCH-001`–`ARCH-006` citations reserved for the active `/cdd-author` round \|$"
 )
-if architecture_rows != [expected_architecture_row]:
-    fail("sibling PLAN architecture row does not exactly match repo, scaffold date, count, status, and citation reservation")
+if len(architecture_rows) != 1 or not architecture_row_pattern.fullmatch(architecture_rows[0]):
+    fail("sibling PLAN architecture row does not preserve repo, scaffold date, count, status, and citation reservation")
 
 if (ROOT / "PROBLEM.md").exists():
     fail("retired peerreview control file present: PROBLEM.md")
@@ -304,4 +343,6 @@ if errors:
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
-print(f"PASS: architecture verification (4 Accepted ADRs, 2 boundary rule sets, scaffolded {scaffold_date})")
+accepted_count = sum(contract.get("status", "Accepted") == "Accepted" for contract in adr_contracts.values())
+proposed_count = sum(contract.get("status", "Accepted") == "Proposed" for contract in adr_contracts.values())
+print(f"PASS: architecture verification ({accepted_count} Accepted, {proposed_count} Proposed ADRs; 2 boundary rule sets; scaffolded {scaffold_date})")

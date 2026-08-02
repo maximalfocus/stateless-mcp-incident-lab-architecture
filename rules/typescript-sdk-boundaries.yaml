@@ -27,6 +27,9 @@ deny:
   - id: inbound-to-outbound-adapters
     from_glob: src/adapters/inbound/**
     import_pattern: '^src/adapters/outbound(?:/|$)'
+  - id: outbound-to-inbound-adapters
+    from_glob: src/adapters/outbound/**
+    import_pattern: '^src/adapters/inbound(?:/|$)'
 
 boundaries:
   - id: domain-public-api
