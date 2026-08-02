@@ -137,10 +137,8 @@ elif not all(
 ):
     fail("sibling PLAN architecture row does not match repo, scaffold date, count, and status")
 
-charter = read(ROOT / "PROBLEM.md")
-for heading in ["Problem", "Scope", "Non-goals", "Acceptance criteria", "Verification", "Residuals"]:
-    if len(re.findall(rf"^## {re.escape(heading)}$", charter, re.MULTILINE)) != 1:
-        fail(f"PROBLEM.md must contain exactly one ## {heading}")
+if (ROOT / "PROBLEM.md").exists():
+    fail("retired peerreview control file present: PROBLEM.md")
 
 if errors:
     print("FAIL: architecture verification")
