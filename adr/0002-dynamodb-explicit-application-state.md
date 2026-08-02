@@ -1,6 +1,6 @@
 # ADR-0002: DynamoDB for explicit application state
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
@@ -18,3 +18,4 @@ Local and AWS persistence semantics are intended to align, but data modeling fol
 
 - [PRD — Domain and data model](../../stateless-mcp-incident-lab-prd/PRD.md)
 - [PLAN-001 — Technology choices](../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md)
+- Conformance: `ARCH-005`

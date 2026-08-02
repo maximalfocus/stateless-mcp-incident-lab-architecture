@@ -1,0 +1,42 @@
+version: 1
+implementation: typescript-raw
+architecture: hexagonal
+source_root: src
+
+deny:
+  - id: domain-to-application
+    from_glob: src/domain/**/*
+    import_pattern: src/application/**
+  - id: domain-to-adapters
+    from_glob: src/domain/**/*
+    import_pattern: src/adapters/**
+  - id: domain-to-frameworks
+    from_glob: src/domain/**/*
+    import_pattern: '@modelcontextprotocol/sdk|node:http|@aws-sdk/.*'
+  - id: application-to-adapters
+    from_glob: src/application/**/*
+    import_pattern: src/adapters/**
+  - id: inbound-to-outbound-adapters
+    from_glob: src/adapters/inbound/**/*
+    import_pattern: src/adapters/outbound/**
+  - id: raw-sdk-dependency
+    from_glob: src/**/*
+    import_pattern: '@modelcontextprotocol/sdk'
+
+boundaries:
+  - id: domain-public-api
+    from_glob: src/**/*
+    module_pattern: src/domain/*/
+    allowed_entry: index.ts
+  - id: application-public-api
+    from_glob: src/**/*
+    module_pattern: src/application/*/
+    allowed_entry: index.ts
+  - id: inbound-adapter-public-api
+    from_glob: src/**/*
+    module_pattern: src/adapters/inbound/*/
+    allowed_entry: index.ts
+  - id: outbound-adapter-public-api
+    from_glob: src/**/*
+    module_pattern: src/adapters/outbound/*/
+    allowed_entry: index.ts

@@ -1,6 +1,6 @@
 # ADR-0001: Independent raw and SDK realizations
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
@@ -18,3 +18,4 @@ Domain logic is intentionally reimplemented, increasing work while making behavi
 
 - [PRD — Goals and Product topology](../../stateless-mcp-incident-lab-prd/PRD.md)
 - [PLAN-001 — Approach](../../stateless-mcp-incident-lab-prd/PLAN-001-stateless-core.md)
+- Conformance: `ARCH-001` through `ARCH-004`

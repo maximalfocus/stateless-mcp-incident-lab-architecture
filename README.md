@@ -6,10 +6,10 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 
 | ADR | Status | Decision | Pinned by |
 |---|---|---|---|
-| [ADR-0001](adr/0001-independent-raw-sdk-realizations.md) | Proposed | Independent raw and SDK realizations behind one contract | Future `architecture/` conformance round |
-| [ADR-0002](adr/0002-dynamodb-explicit-application-state.md) | Proposed | DynamoDB for explicit application state across replicas | Future persistence/infra conformance round |
-| [ADR-0003](adr/0003-fargate-alb-streamable-http.md) | Proposed | ECS Fargate and ALB for Streamable HTTP and SSE | Future transport/infra conformance round |
-| [ADR-0004](adr/0004-ephemeral-unauthenticated-core-lab.md) | Proposed | Ephemeral synthetic deployment with auth deferred | Future security/infra conformance round |
+| [ADR-0001](adr/0001-independent-raw-sdk-realizations.md) | Accepted | Independent raw and SDK realizations behind one contract | `ARCH-001`–`ARCH-004` |
+| [ADR-0002](adr/0002-dynamodb-explicit-application-state.md) | Accepted | DynamoDB for explicit application state across replicas | `ARCH-005` |
+| [ADR-0003](adr/0003-fargate-alb-streamable-http.md) | Accepted | ECS Fargate and ALB for Streamable HTTP and SSE | `ARCH-006` |
+| [ADR-0004](adr/0004-ephemeral-unauthenticated-core-lab.md) | Accepted | Ephemeral synthetic deployment with auth deferred | `ARCH-006` |
 
 ## Directories
 
@@ -17,10 +17,14 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 - `diagrams/` — Mermaid source and rendered deployment diagrams.
 - `rules/` — byte-faithful implementation boundary rules derived from architecture goldens.
 
-`diagrams/` and `rules/` are intentionally empty; a citing conformance or acceptance round authors their first artifacts.
+`diagrams/` remains intentionally empty until deployed topology is verified. `rules/` contains the raw and SDK implementation boundary contracts pinned by `ARCH-001`–`ARCH-004`.
 
 ## Lifecycle
 
-These stubs record PRD-level decisions only. `/cdd-author` promotes an ADR to `Accepted` when a conformance round cites it, after updating the complete ADR surface and running architecture peer review. Accepted ADRs are append-only and are superseded by new ADRs rather than edited in place.
+`/cdd-author` promoted these PRD-level decisions to `Accepted` when the backend conformance round pinned them. Accepted ADRs are append-only and are superseded by new ADRs rather than edited in place.
 
-When the first Accepted ADR, rendered diagram, or boundary rule lands, `scripts/verify-architecture.py` must gain the checks it defers today: append-only enforcement against ADR history, rendered-diagram verification, and parsing every boundary YAML with a real loader.
+`scripts/verify-architecture.py` enforces accepted-ADR immutability against git history and parses every boundary YAML with a real loader. Rendered-diagram verification is activated when acceptance authors the first deployment diagram.
+
+## Validation
+
+Install the pinned parser with `python3 -m pip install -r requirements.txt`, then run `python3 scripts/verify-architecture.py`.

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Structural and sibling-consistency gate for the architecture scaffold."""
+"""Structural and sibling-consistency gate for accepted architecture contracts."""
 from __future__ import annotations
 
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PRD = ROOT.parent / "stateless-mcp-incident-lab-prd"
@@ -49,8 +51,26 @@ required_sections = ["Context", "Decision", "Consequences", "Related"]
 for path in sorted(adr_dir.glob("*.md")):
     body = read(path)
     statuses = re.findall(r"^Status:\s*(\S.*)$", body, re.MULTILINE)
-    if statuses != ["Proposed"]:
-        fail(f"{path.name}: expected exactly one Proposed status, found {statuses}")
+    if statuses != ["Accepted"]:
+        fail(f"{path.name}: expected exactly one Accepted status, found {statuses}")
+
+    # Once an Accepted version exists in history, its bytes are immutable.
+    try:
+        commits = subprocess.check_output(
+            ["git", "log", "--reverse", "-SStatus: Accepted", "--format=%H", "--", str(path.relative_to(ROOT))],
+            cwd=ROOT,
+            text=True,
+        ).splitlines()
+        if commits:
+            accepted = subprocess.check_output(
+                ["git", "show", f"{commits[0]}:{path.relative_to(ROOT)}"],
+                cwd=ROOT,
+                text=True,
+            )
+            if body != accepted:
+                fail(f"{path.name}: Accepted ADR differs from its first accepted version; supersede it instead")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        fail(f"{path.name}: cannot verify Accepted ADR history: {exc}")
     for heading in required_sections:
         bodies = section_bodies(body, heading)
         if len(bodies) != 1 or not bodies[0]:
@@ -78,21 +98,55 @@ for name in sorted(expected):
         fail(f"README missing ADR-{number}")
         continue
     filename, status, _decision, pinned = row
-    if filename != name or status != "Proposed":
+    if filename != name or status != "Accepted":
         fail(f"README mismatch for ADR-{number}: file={filename!r} status={status!r}")
-    if not pinned.startswith("Future "):
-        fail(f"README ADR-{number} Pinned by must name a future round while Proposed")
+    if not re.fullmatch(r"`ARCH-[0-9]{3}`(?: through |–)`ARCH-[0-9]{3}`|`ARCH-[0-9]{3}`", pinned):
+        fail(f"README ADR-{number} Pinned by must name one or more ARCH spec IDs")
 if "Accepted ADRs are append-only" not in readme:
     fail("README does not declare the Accepted-ADR append-only lifecycle")
 
-for directory_name in ["diagrams", "rules"]:
-    directory = ROOT / directory_name
-    if not directory.is_dir():
-        fail(f"missing directory: {directory_name}/")
+diagrams = ROOT / "diagrams"
+if not diagrams.is_dir():
+    fail("missing directory: diagrams/")
+elif {str(path.relative_to(diagrams)) for path in diagrams.rglob("*")} != {".gitkeep"}:
+    fail("diagrams/ must remain empty until deployed acceptance authors a verified topology")
+
+rules = ROOT / "rules"
+expected_rules = {"typescript-raw-boundaries.yaml", "typescript-sdk-boundaries.yaml"}
+actual_rules = {path.name for path in rules.glob("*.yaml")} if rules.is_dir() else set()
+if actual_rules != expected_rules:
+    fail(f"boundary rule set differs: missing={sorted(expected_rules-actual_rules)} extra={sorted(actual_rules-expected_rules)}")
+parsed_rules: dict[str, dict] = {}
+for name in sorted(actual_rules):
+    path = rules / name
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        fail(f"{name}: invalid YAML: {exc}")
         continue
-    entries = {str(path.relative_to(directory)) for path in directory.rglob("*")}
-    if entries != {".gitkeep"}:
-        fail(f"{directory_name}/ should contain only .gitkeep, found {sorted(entries)}")
+    if not isinstance(data, dict):
+        fail(f"{name}: YAML root must be an object")
+        continue
+    parsed_rules[name] = data
+    if data.get("version") != 1 or data.get("architecture") != "hexagonal" or data.get("source_root") != "src":
+        fail(f"{name}: version/architecture/source_root contract differs")
+    for collection in ["deny", "boundaries"]:
+        values = data.get(collection)
+        if not isinstance(values, list) or not values:
+            fail(f"{name}: {collection} must be a non-empty list")
+            continue
+        ids = [item.get("id") for item in values if isinstance(item, dict)]
+        if len(ids) != len(values) or len(ids) != len(set(ids)) or not all(isinstance(item, str) and item for item in ids):
+            fail(f"{name}: {collection} entries need unique non-empty ids")
+
+raw = parsed_rules.get("typescript-raw-boundaries.yaml", {})
+sdk = parsed_rules.get("typescript-sdk-boundaries.yaml", {})
+if raw and sdk:
+    if raw.get("deny", [])[:-1] != sdk.get("deny") or raw.get("boundaries") != sdk.get("boundaries"):
+        fail("raw and SDK common boundary assertions are not byte-faithful equivalents")
+    raw_only = raw.get("deny", [])[-1]
+    if raw_only != {"id": "raw-sdk-dependency", "from_glob": "src/**/*", "import_pattern": "@modelcontextprotocol/sdk"}:
+        fail("raw implementation lacks the exact SDK dependency prohibition")
 
 # Validate links and leaked harness syntax across deliverable text formats.
 link_re = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
@@ -145,4 +199,4 @@ if errors:
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
-print(f"PASS: architecture scaffold verification (4 Proposed ADRs, scaffolded {scaffold_date}, sibling PLAN reconciled)")
+print(f"PASS: architecture verification (4 Accepted ADRs, 2 boundary rule sets, scaffolded {scaffold_date})")
