@@ -68,7 +68,7 @@ adr_contracts = {
         "conformance": "ARCH-006",
     },
     "0005-cloudfront-managed-https-origin-alb.md": {
-        "status": "Proposed",
+        "accepted_commit": "4ac43996c70eeff4bac4ec8af086a8349f009813",
         "title": "# ADR-0005: CloudFront-managed HTTPS with a private origin ALB",
         "decision": "CloudFront-managed HTTPS with a private origin ALB",
         "pinned": "`INFRA-004`, `INFRA-010`",
