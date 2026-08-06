@@ -85,6 +85,8 @@ def main() -> None:
         ("unknown sibling conformance citation", lambda r, _p: replace(r / "scripts/verify-architecture.py", '["INFRA-004", "INFRA-010"]', '["INFRA-004", "INFRA-999"]')),
         ("missing sibling conformance checkout", lambda r, _p: shutil.rmtree(r.parent / CONFORMANCE.name)),
         ("conformance fixture ID drift", lambda r, _p: replace(r.parent / CONFORMANCE.name / "conformance/infra/004-https-only-alb/test.json", '"INFRA-004"', '"INFRA-404"')),
+        ("dropped required ADR section", lambda r, _p: replace(r / "adr/0005-cloudfront-managed-https-origin-alb.md", "## Consequences", "## Notes")),
+        ("retracted append-only lifecycle", lambda r, _p: replace(r / "README.md", "Accepted ADRs are append-only", "Accepted ADRs are rewritable")),
     ]
     for name, operation in mutations:
         mutate(name, operation)
