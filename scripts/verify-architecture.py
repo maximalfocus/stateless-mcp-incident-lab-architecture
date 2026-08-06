@@ -67,6 +67,13 @@ adr_contracts = {
         "pinned": "`ARCH-006`",
         "conformance": "ARCH-006",
     },
+    "0005-cloudfront-managed-https-origin-alb.md": {
+        "status": "Proposed",
+        "title": "# ADR-0005: CloudFront-managed HTTPS with a restricted origin ALB",
+        "decision": "CloudFront-managed HTTPS with a restricted origin ALB",
+        "pinned": "`INFRA-004`, `INFRA-010`",
+        "conformance": "INFRA-004 and INFRA-010",
+    },
 }
 expected = set(adr_contracts)
 adr_dir = ROOT / "adr"
