@@ -1,6 +1,6 @@
 # ADR-0005: CloudFront-managed HTTPS with a private origin ALB
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 

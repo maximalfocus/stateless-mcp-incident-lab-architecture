@@ -10,7 +10,7 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 | [ADR-0002](adr/0002-dynamodb-explicit-application-state.md) | Accepted | DynamoDB for explicit application state across replicas | `ARCH-005` |
 | [ADR-0003](adr/0003-fargate-alb-streamable-http.md) | Accepted | ECS Fargate and ALB for Streamable HTTP and SSE | `ARCH-006` |
 | [ADR-0004](adr/0004-ephemeral-unauthenticated-core-lab.md) | Accepted | Ephemeral synthetic deployment with auth deferred | `ARCH-006` |
-| [ADR-0005](adr/0005-cloudfront-managed-https-origin-alb.md) | Proposed | CloudFront-managed HTTPS with a private origin ALB | `INFRA-004`, `INFRA-010` |
+| [ADR-0005](adr/0005-cloudfront-managed-https-origin-alb.md) | Accepted | CloudFront-managed HTTPS with a private origin ALB | `INFRA-004`, `INFRA-010` |
 
 ## Directories
 
