@@ -22,7 +22,7 @@ Layer-symmetric architecture contracts for the Stateless MCP Incident Lab. This 
 
 ## Lifecycle
 
-`/cdd-author` promoted these PRD-level decisions to `Accepted` before the backend conformance round cites them. Accepted ADRs are append-only and are superseded by new ADRs rather than edited in place.
+`/cdd-author` promoted these PRD-level decisions to `Accepted` before the backend conformance round cites them. Accepted ADRs are append-only and are superseded by new ADRs rather than edited in place. A later ADR that builds on an accepted decision without replacing it declares an `Extends:` relation in its `Related` section instead; the gate requires that relation to name the exact ADR file.
 
 `scripts/verify-architecture.py` enforces accepted-ADR immutability against git history and parses every boundary YAML with a real loader. Deployed acceptance must add diagram-fidelity checks in the same change that introduces the first deployment diagram; until then, the gate requires `diagrams/` to remain empty.
 

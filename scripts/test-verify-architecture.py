@@ -81,7 +81,10 @@ def main() -> None:
         ("README pin for the Proposed ADR", lambda r, _p: replace(r / "README.md", "`INFRA-004`, `INFRA-010`", "`INFRA-004`")),
         ("severed sibling PRD link", lambda r, _p: replace(r / "adr/0005-cloudfront-managed-https-origin-alb.md", "(../../stateless-mcp-incident-lab-prd/PRD.md)", "(../../stateless-mcp-incident-lab-prd/PRD-missing.md)")),
         ("missing Extends relation", lambda r, _p: replace(r / "adr/0005-cloudfront-managed-https-origin-alb.md", "- Extends: [ADR-0003", "- Related: [ADR-0003")),
+        ("wrong Extends target", lambda r, _p: replace(r / "adr/0005-cloudfront-managed-https-origin-alb.md", "(0003-fargate-alb-streamable-http.md)", "(0004-ephemeral-unauthenticated-core-lab.md)")),
         ("unknown sibling conformance citation", lambda r, _p: replace(r / "scripts/verify-architecture.py", '["INFRA-004", "INFRA-010"]', '["INFRA-004", "INFRA-999"]')),
+        ("missing sibling conformance checkout", lambda r, _p: shutil.rmtree(r.parent / CONFORMANCE.name)),
+        ("conformance fixture ID drift", lambda r, _p: replace(r.parent / CONFORMANCE.name / "conformance/infra/004-https-only-alb/test.json", '"INFRA-004"', '"INFRA-404"')),
     ]
     for name, operation in mutations:
         mutate(name, operation)

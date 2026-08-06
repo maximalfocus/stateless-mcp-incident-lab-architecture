@@ -135,7 +135,9 @@ for path in sorted(adr_dir.glob("*.md")):
                 fail(f"{path.name}: expected one exact Extends relation to {contract['extends']}")
 
 conformance_root = ROOT.parent / "stateless-mcp-incident-lab-conformance" / "conformance"
-if conformance_root.is_dir():
+if not conformance_root.is_dir():
+    fail(f"missing sibling conformance suite: {conformance_root}")
+else:
     disk_ids: set[str] = set()
     for test_path in conformance_root.rglob("test.json"):
         try:
