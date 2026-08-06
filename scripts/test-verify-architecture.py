@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 PRD = ROOT.parent / "stateless-mcp-incident-lab-prd"
+CONFORMANCE = ROOT.parent / "stateless-mcp-incident-lab-conformance"
 
 
 def replace(path: Path, old: str, new: str) -> None:
@@ -25,7 +27,7 @@ def append(path: Path, value: str) -> None:
 
 def run(repo: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["python3", "scripts/verify-architecture.py"],
+        [sys.executable, "scripts/verify-architecture.py"],
         cwd=repo,
         text=True,
         stdout=subprocess.PIPE,
@@ -39,8 +41,10 @@ def mutate(name: str, operation: Callable[[Path, Path], None]) -> None:
         family = Path(temp)
         repo = family / ROOT.name
         prd = family / PRD.name
+        conformance = family / CONFORMANCE.name
         shutil.copytree(ROOT, repo, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         shutil.copytree(PRD, prd, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        shutil.copytree(CONFORMANCE, conformance, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git"))
         operation(repo, prd)
         result = run(repo)
         if result.returncode == 0:
@@ -72,6 +76,12 @@ def main() -> None:
         ("missing pinned acceptance commit", lambda r, _p: replace(r / "scripts/verify-architecture.py", "8aacb4f73caab65cff80f69459162e6c9a066337", "0f569cc000000000000000000000000000000000")),
         ("premature diagram", lambda r, _p: (r / "diagrams/deployment.mmd").write_text("flowchart LR\n", encoding="utf-8")),
         ("stale sibling PLAN status", lambda _r, p: replace(p / "PLAN-001-stateless-core.md", "all 4 are now `Status: Accepted`", "all 4 remain Proposed")),
+        ("Proposed ADR promoted without review", lambda r, _p: replace(r / "adr/0005-cloudfront-managed-https-origin-alb.md", "Status: Proposed", "Status: Accepted")),
+        ("ADR conformance citation drift", lambda r, _p: replace(r / "adr/0005-cloudfront-managed-https-origin-alb.md", "Conformance: INFRA-004 and INFRA-010", "Conformance: INFRA-004")),
+        ("README pin for the Proposed ADR", lambda r, _p: replace(r / "README.md", "`INFRA-004`, `INFRA-010`", "`INFRA-004`")),
+        ("severed sibling PRD link", lambda r, _p: replace(r / "adr/0005-cloudfront-managed-https-origin-alb.md", "(../../stateless-mcp-incident-lab-prd/PRD.md)", "(../../stateless-mcp-incident-lab-prd/PRD-missing.md)")),
+        ("missing Extends relation", lambda r, _p: replace(r / "adr/0005-cloudfront-managed-https-origin-alb.md", "- Extends: [ADR-0003", "- Related: [ADR-0003")),
+        ("unknown sibling conformance citation", lambda r, _p: replace(r / "scripts/verify-architecture.py", '["INFRA-004", "INFRA-010"]', '["INFRA-004", "INFRA-999"]')),
     ]
     for name, operation in mutations:
         mutate(name, operation)

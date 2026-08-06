@@ -69,10 +69,12 @@ adr_contracts = {
     },
     "0005-cloudfront-managed-https-origin-alb.md": {
         "status": "Proposed",
-        "title": "# ADR-0005: CloudFront-managed HTTPS with a restricted origin ALB",
-        "decision": "CloudFront-managed HTTPS with a restricted origin ALB",
+        "title": "# ADR-0005: CloudFront-managed HTTPS with a private origin ALB",
+        "decision": "CloudFront-managed HTTPS with a private origin ALB",
         "pinned": "`INFRA-004`, `INFRA-010`",
         "conformance": "INFRA-004 and INFRA-010",
+        "cited_ids": ["INFRA-004", "INFRA-010"],
+        "extends": "0003-fargate-alb-streamable-http.md",
     },
 }
 expected = set(adr_contracts)
@@ -127,6 +129,25 @@ for path in sorted(adr_dir.glob("*.md")):
         conformance = [value.replace("`", "") for value in re.findall(r"^- Conformance: (.+)$", related[0], re.MULTILINE)]
         if contract and conformance != [contract["conformance"]]:
             fail(f"{path.name}: Related conformance citation differs from the ADR index")
+        if contract and "extends" in contract:
+            extends = re.findall(r"^- Extends: \[[^]]+\]\(([^)]+)\)$", related[0], re.MULTILINE)
+            if extends != [contract["extends"]]:
+                fail(f"{path.name}: expected one exact Extends relation to {contract['extends']}")
+
+conformance_root = ROOT.parent / "stateless-mcp-incident-lab-conformance" / "conformance"
+if conformance_root.is_dir():
+    disk_ids: set[str] = set()
+    for test_path in conformance_root.rglob("test.json"):
+        try:
+            test = json.loads(test_path.read_text(encoding="utf-8"))
+            if isinstance(test.get("spec_id"), str):
+                disk_ids.add(test["spec_id"])
+        except (OSError, json.JSONDecodeError) as exc:
+            fail(f"cannot parse sibling conformance metadata {test_path}: {exc}")
+    for name, contract in adr_contracts.items():
+        for spec_id in contract.get("cited_ids", []):
+            if spec_id not in disk_ids:
+                fail(f"{name}: cited conformance ID {spec_id} does not exist in sibling suite")
 
 readme = read(ROOT / "README.md")
 row_re = re.compile(r"^\| \[ADR-([0-9]{4})\]\(adr/([^)]+)\) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", re.MULTILINE)
