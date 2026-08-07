@@ -76,6 +76,15 @@ adr_contracts = {
         "cited_ids": ["INFRA-004", "INFRA-010"],
         "extends": "0003-fargate-alb-streamable-http.md",
     },
+    "0006-trusted-viewer-ip-waf-key.md": {
+        "accepted_commit": "7866136cd3486de8bdd6412e53b98ec6390f5b9c",
+        "title": "# ADR-0006: Trusted CloudFront viewer key for regional WAF rate limiting",
+        "decision": "Trusted CloudFront viewer key for regional WAF rate limiting",
+        "pinned": "`INFRA-005`",
+        "conformance": "INFRA-005",
+        "cited_ids": ["INFRA-005"],
+        "supersedes": "0005-cloudfront-managed-https-origin-alb.md",
+    },
 }
 expected = set(adr_contracts)
 adr_dir = ROOT / "adr"
@@ -133,6 +142,10 @@ for path in sorted(adr_dir.glob("*.md")):
             extends = re.findall(r"^- Extends: \[[^]]+\]\(([^)]+)\)$", related[0], re.MULTILINE)
             if extends != [contract["extends"]]:
                 fail(f"{path.name}: expected one exact Extends relation to {contract['extends']}")
+        if contract and "supersedes" in contract:
+            supersedes = re.findall(r"^- Supersedes(?: [^:]+)?: \[[^]]+\]\(([^)]+)\)$", related[0], re.MULTILINE)
+            if supersedes != [contract["supersedes"]]:
+                fail(f"{path.name}: expected one exact Supersedes relation to {contract['supersedes']}")
 
 conformance_root = ROOT.parent / "stateless-mcp-incident-lab-conformance" / "conformance"
 if not conformance_root.is_dir():
